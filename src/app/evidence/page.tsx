@@ -4,215 +4,165 @@ import { useState, useEffect, Suspense } from "react";
 import { useRouter } from "next/navigation";
 import { supabase } from "../../lib/supabase";
 
-interface ExtractedProfessor {
+interface Profile {
   id: string;
-  name: string;
-  title: string;
-  department_url: string;
+  professor_name: string;
+  university_name: string;
+  department_name: string;
 }
 
-interface EvidenceData {
-  value: string;
-  status: string;
-  sources: string[];
+interface Evidence {
+  id: string;
+  field_name: string;
+  field_value: string;
+  verification_status: string;
+  evidence_summary: string | null;
+  source_urls: string[];
+  conflict_notes: string | null;
 }
 
-interface VerifiedProfile {
-  email_data: EvidenceData;
-  identity_data: EvidenceData;
-  lab_data: EvidenceData;
-  research_data: EvidenceData;
-  recruitment_data: EvidenceData;
-}
-
-function EvidenceWorkspace() {
-  const [professors, setProfessors] = useState<ExtractedProfessor[]>([]);
+function EvidenceDashboard() {
+  const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [selectedProfile, setSelectedProfile] = useState<Profile | null>(null);
+  const [evidenceList, setEvidenceList] = useState<Evidence[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [researchingId, setResearchingId] = useState<string | null>(null);
-  const [verifiedResults, setVerifiedResults] = useState<Record<string, VerifiedProfile>>({});
+  const [isLoadingEvidence, setIsLoadingEvidence] = useState(false);
   const router = useRouter();
 
   useEffect(() => {
-    const fetchVaultTargets = async () => {
+    const fetchProfiles = async () => {
+      setIsLoading(true);
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         router.push("/login");
         return;
       }
 
-      const { data, error } = await supabase
-        .from('extracted_professors')
-        .select('*')
+      const { data } = await supabase
+        .from('verified_profiles')
+        .select('id, professor_name, university_name, department_name')
+        .eq('user_id', user.id)
         .order('created_at', { ascending: false });
 
-      if (error) {
-        console.error("Error fetching from vault:", error);
-        alert("Could not load your saved targets.");
-      } else if (data) {
-        setProfessors(data);
-      }
+      if (data) setProfiles(data);
       setIsLoading(false);
     };
 
-    fetchVaultTargets();
+    fetchProfiles();
   }, [router]);
 
-  const handleResearch = async (prof: ExtractedProfessor) => {
-    setResearchingId(prof.id);
+  const handleSelectProfile = async (profile: Profile) => {
+    setSelectedProfile(profile);
+    setIsLoadingEvidence(true);
+    setEvidenceList([]);
 
-    try {
-      // 1. Call the Exhaustive Research Engine
-      const response = await fetch("/api/exhaustive", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: prof.name,
-          title: prof.title,
-          department_url: prof.department_url
-        }),
-      });
+    const { data } = await supabase
+      .from('professor_evidence')
+      .select('*')
+      .eq('profile_id', profile.id)
+      .order('field_name', { ascending: true });
 
-      const result = await response.json();
-
-      if (result.success && result.data) {
-        const profileData = result.data;
-        
-        // 2. Save the structured evidence to the secure vault
-        const { data: { user } } = await supabase.auth.getUser();
-        if (user) {
-          await supabase.from('verified_profiles').insert([{
-            user_id: user.id,
-            professor_name: prof.name,
-            university_name: "Extracted from Anchor URL",
-            department_name: prof.title,
-            email_data: profileData.email_data,
-            identity_data: profileData.identity_data,
-            lab_data: profileData.lab_data,
-            research_data: profileData.research_data,
-            recruitment_data: profileData.recruitment_data
-          }]);
-        }
-
-        // 3. Update the UI to display the evidence
-        setVerifiedResults(prev => ({
-          ...prev,
-          [prof.id]: profileData
-        }));
-
-      } else {
-        alert("Research failed: " + result.error);
-      }
-    } catch (error) {
-      console.error("Research Error:", error);
-      alert("A network error occurred while performing research.");
-    } finally {
-      setResearchingId(null);
+    if (data) {
+      setEvidenceList(data);
     }
+    setIsLoadingEvidence(false);
   };
 
-  const StatusBadge = ({ status }: { status: string }) => {
-    let color = "bg-gray-300 text-gray-800";
-    if (status === "VERIFIED") color = "bg-gray-900 text-white";
-    if (status === "PARTIALLY VERIFIED") color = "bg-yellow-200 text-yellow-900";
-    if (status === "CONFLICTING") color = "bg-red-200 text-red-900";
-    
-    return (
-      <span className={`px-2 py-1 text-xs font-bold rounded-md shadow-sm border border-gray-400 ${color}`}>
-        {status}
-      </span>
-    );
+  const formatFieldName = (name: string) => {
+    return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
   return (
     <div className="min-h-screen p-8 bg-gradient-to-br from-gray-200 to-gray-400 text-gray-900">
-      <div className="max-w-5xl mx-auto space-y-6">
+      <div className="max-w-7xl mx-auto space-y-6">
         
         <div className="flex justify-between items-center bg-gray-100/50 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-gray-300">
-          <h1 className="text-3xl font-bold tracking-tight">Evidence & Verification Dashboard</h1>
+          <h1 className="text-3xl font-bold tracking-tight">Evidence Review Dashboard</h1>
           <button 
-            onClick={() => router.push("/dashboard")}
-            className="px-4 py-2 bg-gray-300 text-gray-900 rounded-md font-semibold shadow-sm hover:bg-gray-400 transition-all"
+            onClick={() => router.push("/workspace")}
+            className="px-4 py-2 bg-gray-800 text-white rounded-md font-semibold shadow-sm hover:bg-gray-700 transition-all"
           >
-            Back to Dashboard
+            Back to Workspace
           </button>
         </div>
 
-        <div className="bg-gray-100/50 backdrop-blur-md p-8 rounded-2xl shadow-sm border border-gray-300 space-y-4">
-          <h2 className="text-xl font-bold">Locked Targets Pending Research</h2>
-          <p className="font-medium">Click initiate to deploy the AI agent. It will extract and strictly categorize the data, saving the exact source URLs as evidence.</p>
-          
-          {isLoading ? (
-            <p className="font-bold">Accessing secure vault...</p>
-          ) : professors.length > 0 ? (
-            <div className="space-y-4">
-              {professors.map((prof) => {
-                const isResearching = researchingId === prof.id;
-                const result = verifiedResults[prof.id];
-
-                return (
-                  <div key={prof.id} className="bg-white/80 border border-gray-300 rounded-xl shadow-sm overflow-hidden p-6 space-y-4">
-                    <div className="flex items-center justify-between">
-                      <div>
-                        <span className="text-xl font-bold text-gray-900 block">{prof.name}</span>
-                        <span className="text-sm font-semibold text-gray-600 block">{prof.title}</span>
-                      </div>
-                      
-                      {!result && (
-                        <button 
-                          onClick={() => handleResearch(prof)}
-                          disabled={isResearching}
-                          className="px-6 py-3 bg-gray-800 text-gray-100 rounded-xl font-bold shadow-md hover:bg-gray-700 transition-all disabled:opacity-50"
-                        >
-                          {isResearching ? "Running Multi-Source Verification..." : "Initiate Exhaustive AI Research"}
-                        </button>
-                      )}
-                    </div>
-
-                    {result && (
-                      <div className="mt-6 space-y-4 border-t border-gray-300 pt-4">
-                        <h3 className="text-lg font-bold">Verified Evidence Profile</h3>
-                        
-                        <div className="grid gap-4">
-                          {[
-                            { label: "Institutional Email", data: result.email_data },
-                            { label: "Identity & Affiliation", data: result.identity_data },
-                            { label: "Lab / Group Ownership", data: result.lab_data },
-                            { label: "Verified Research Area", data: result.research_data },
-                            { label: "Recruitment & Openings", data: result.recruitment_data }
-                          ].map((field, idx) => (
-                            <div key={idx} className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-                              <div className="flex items-center justify-between mb-2">
-                                <span className="font-bold text-gray-800">{field.label}</span>
-                                <StatusBadge status={field.data.status} />
-                              </div>
-                              <p className="text-gray-900 font-medium mb-3">{field.data.value}</p>
-                              
-                              {field.data.sources && field.data.sources.length > 0 && (
-                                <div className="space-y-1">
-                                  <span className="text-xs font-bold text-gray-500 uppercase tracking-wider">Evidence Sources:</span>
-                                  {field.data.sources.map((src, sIdx) => (
-                                    <a key={sIdx} href={src} target="_blank" rel="noreferrer" className="block text-sm text-blue-700 hover:underline truncate max-w-2xl">
-                                      {src}
-                                    </a>
-                                  ))}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="bg-gray-100/50 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-gray-300 h-[80vh] overflow-y-auto">
+            <h2 className="text-xl font-bold mb-4">Verified Profiles</h2>
+            {isLoading ? (
+              <p className="font-medium">Loading profiles...</p>
+            ) : profiles.length === 0 ? (
+              <p className="text-gray-700 font-medium">No verified profiles found. Run batch research first.</p>
+            ) : (
+              <div className="space-y-3">
+                {profiles.map(profile => (
+                  <div 
+                    key={profile.id}
+                    onClick={() => handleSelectProfile(profile)}
+                    className={`p-4 rounded-xl border cursor-pointer transition-all ${selectedProfile?.id === profile.id ? 'bg-gray-800 text-white border-gray-800' : 'bg-white/80 border-gray-300 hover:bg-gray-100 text-gray-900'}`}
+                  >
+                    <span className="font-bold block">{profile.professor_name}</span>
+                    <span className={`text-sm ${selectedProfile?.id === profile.id ? 'text-gray-300' : 'text-gray-600'}`}>{profile.department_name}</span>
                   </div>
-                );
-              })}
-            </div>
-          ) : (
-            <div className="p-8 text-center bg-white/80 rounded-xl border border-gray-300">
-              <p className="text-lg font-bold text-gray-700">No targets found in your vault.</p>
-            </div>
-          )}
-        </div>
+                ))}
+              </div>
+            )}
+          </div>
 
+          <div className="lg:col-span-2 bg-gray-100/50 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-gray-300 h-[80vh] overflow-y-auto">
+            {!selectedProfile ? (
+              <div className="flex items-center justify-center h-full">
+                <p className="text-xl font-bold text-gray-500">Select a profile to inspect evidence.</p>
+              </div>
+            ) : (
+              <div className="space-y-6">
+                <div className="border-b border-gray-300 pb-4">
+                  <h2 className="text-2xl font-bold text-gray-900">{selectedProfile.professor_name}</h2>
+                  <p className="text-gray-700 font-medium">{selectedProfile.university_name} - {selectedProfile.department_name}</p>
+                </div>
+
+                {isLoadingEvidence ? (
+                  <p className="font-medium">Loading evidence vault...</p>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {evidenceList.map(ev => (
+                      <div key={ev.id} className="p-4 bg-white/80 rounded-xl border border-gray-300 shadow-sm space-y-3">
+                        <div className="flex justify-between items-start">
+                          <span className="font-bold text-gray-800 text-sm uppercase tracking-wider">{formatFieldName(ev.field_name)}</span>
+                          <span className={`px-2 py-1 text-[10px] font-bold rounded-md border uppercase tracking-wider ${ev.verification_status === 'VERIFIED' ? 'bg-gray-900 text-white border-gray-900' : ev.verification_status === 'CONFLICTING' ? 'bg-gray-400 text-gray-900 border-gray-500' : 'bg-gray-200 text-gray-700 border-gray-300'}`}>
+                            {ev.verification_status}
+                          </span>
+                        </div>
+                        
+                        <p className="text-gray-900 font-medium whitespace-pre-wrap">{ev.field_value}</p>
+
+                        {ev.conflict_notes && (
+                          <div className="p-3 bg-gray-100 rounded-lg border border-gray-300 mt-2">
+                            <span className="text-xs font-bold text-gray-800 uppercase block mb-1">Conflict / Notes:</span>
+                            <p className="text-sm text-gray-700">{ev.conflict_notes}</p>
+                          </div>
+                        )}
+
+                        {ev.source_urls && ev.source_urls.length > 0 && (
+                          <div className="pt-2 mt-2 border-t border-gray-300">
+                            <span className="text-xs font-bold text-gray-800 uppercase block mb-1">Source Evidence:</span>
+                            <div className="space-y-1">
+                              {ev.source_urls.map((url, idx) => (
+                                <a key={idx} href={url} target="_blank" rel="noreferrer" className="block text-xs font-bold hover:underline truncate">
+                                  {url}
+                                </a>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -220,12 +170,8 @@ function EvidenceWorkspace() {
 
 export default function Evidence() {
   return (
-    <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-gray-200 to-gray-400 text-gray-900 font-bold text-xl">
-        Loading aesthetic workspace...
-      </div>
-    }>
-      <EvidenceWorkspace />
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center font-bold">Loading...</div>}>
+      <EvidenceDashboard />
     </Suspense>
   );
 }
