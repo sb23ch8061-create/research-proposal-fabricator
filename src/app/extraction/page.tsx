@@ -2,18 +2,12 @@
 
 import { useState, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { supabase } from "../../lib/supabase";
 
 interface Professor {
   name: string;
   title: string;
   researchArea: string;
-}
-
-interface VerificationResult {
-  verified: boolean;
-  evidence: string;
-  verifiedResearch: string;
-  recentPublicationTopic: string;
 }
 
 function ExtractionWorkspace() {
@@ -22,16 +16,17 @@ function ExtractionWorkspace() {
   
   const [url, setUrl] = useState(initialUrl);
   const [isExtracting, setIsExtracting] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [professors, setProfessors] = useState<Professor[]>([]);
-  const [verifyingProf, setVerifyingProf] = useState<string | null>(null);
-  const [verifications, setVerifications] = useState<Record<string, VerificationResult>>({});
+  
+  const [selectedNames, setSelectedNames] = useState<Set<string>>(new Set());
   const router = useRouter();
 
   const handleExtract = async () => {
     if (!url.trim()) return;
     setIsExtracting(true);
     setProfessors([]);
-    setVerifications({});
+    setSelectedNames(new Set());
     
     try {
       const response = await fetch("/api/extract", {
@@ -47,6 +42,8 @@ function ExtractionWorkspace() {
           alert("Diagnostic: The engine successfully reached the page, but 0 professors were found. The university may be blocking access.");
         } else {
           setProfessors(result.data.professors);
+          const allNames = result.data.professors.map((p: Professor) => p.name);
+          setSelectedNames(new Set(allNames));
         }
       } else {
         alert("Extraction failed: " + result.error);
@@ -59,31 +56,59 @@ function ExtractionWorkspace() {
     }
   };
 
-  const handleVerify = async (prof: Professor) => {
-    setVerifyingProf(prof.name);
+  const toggleSelection = (name: string) => {
+    const newSelected = new Set(selectedNames);
+    if (newSelected.has(name)) {
+      newSelected.delete(name);
+    } else {
+      newSelected.add(name);
+    }
+    setSelectedNames(newSelected);
+  };
+
+  const handleLockSelection = async () => {
+    if (selectedNames.size === 0) {
+      alert("Please select at least one professor to proceed.");
+      return;
+    }
+
+    setIsSaving(true);
     
     try {
-      const response = await fetch("/api/verify", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ ...prof, contextUrl: url }),
-      });
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        alert("Authentication error: Please log in again.");
+        router.push("/login");
+        return;
+      }
 
-      const result = await response.json();
-
-      if (result.success && result.data) {
-        setVerifications(prev => ({
-          ...prev,
-          [prof.name]: result.data
+      const selectedProfessorsData = professors
+        .filter(prof => selectedNames.has(prof.name))
+        .map(prof => ({
+          user_id: user.id,
+          department_url: url,
+          name: prof.name,
+          title: prof.title,
+          initial_url: url // Storing the department URL as the initial anchor
         }));
+
+      const { error } = await supabase
+        .from('extracted_professors')
+        .insert(selectedProfessorsData);
+
+      if (error) {
+        console.error("Supabase Error:", error);
+        alert("Failed to save selection to your vault: " + error.message);
       } else {
-        alert("Verification failed: " + result.error);
+        alert(`Successfully saved ${selectedNames.size} professors to your secure vault!`);
+        // We will navigate to the new exhaustive research dashboard once we build it
+        router.push("/dashboard"); 
       }
     } catch (error) {
-      console.error("Verification Error:", error);
-      alert("A network error occurred while verifying.");
+      console.error("Save Error:", error);
+      alert("An unexpected error occurred while saving.");
     } finally {
-      setVerifyingProf(null);
+      setIsSaving(false);
     }
   };
 
@@ -102,8 +127,8 @@ function ExtractionWorkspace() {
         </div>
 
         <div className="bg-gray-100/50 backdrop-blur-md p-8 rounded-2xl shadow-sm border border-gray-300 space-y-4">
-          <h2 className="text-xl font-bold">Department Link</h2>
-          <p className="font-medium">Provide the web address of the academic department. The system will extract the listed professors for verification.</p>
+          <h2 className="text-xl font-bold">1. Initial Faculty Extraction</h2>
+          <p className="font-medium">Provide the web address of the academic department. The system will cheaply extract the basic list of faculty for your review.</p>
           
           <div className="flex gap-4">
             <input 
@@ -115,67 +140,57 @@ function ExtractionWorkspace() {
             />
             <button 
               onClick={handleExtract}
-              disabled={isExtracting}
+              disabled={isExtracting || isSaving}
               className="px-8 py-4 bg-gray-800 text-gray-100 rounded-xl font-bold shadow-md hover:bg-gray-700 hover:shadow-lg transition-all disabled:opacity-50 text-lg"
             >
-              {isExtracting ? "Extracting..." : "Extract Professors"}
+              {isExtracting ? "Extracting..." : "Extract Faculty List"}
             </button>
           </div>
         </div>
 
         {professors.length > 0 && (
           <div className="bg-gray-100/50 backdrop-blur-md p-8 rounded-2xl shadow-sm border border-gray-300 space-y-6">
-            <h2 className="text-2xl font-bold">Extracted Professors</h2>
+            <div className="flex justify-between items-center">
+              <h2 className="text-2xl font-bold">2. Target Selection</h2>
+              <span className="px-4 py-2 bg-gray-800 text-white font-bold rounded-md shadow-sm">
+                {selectedNames.size} Selected
+              </span>
+            </div>
+            <p className="font-medium text-gray-700">Review the extracted list and explicitly select the professors you wish to investigate. Unselected professors will be ignored to preserve your API resources.</p>
             
-            <div className="grid gap-4">
+            <div className="bg-white/80 border border-gray-300 rounded-xl shadow-sm overflow-hidden">
               {professors.map((prof, index) => {
-                const verification = verifications[prof.name];
-                const isVerifyingThis = verifyingProf === prof.name;
-
+                const isSelected = selectedNames.has(prof.name);
                 return (
-                  <div key={index} className="flex flex-col p-6 bg-white/80 rounded-xl border border-gray-300 shadow-sm space-y-4">
-                    <div className="flex justify-between items-start">
-                      <span className="text-xl font-bold text-gray-900">{prof.name}</span>
-                      <span className="px-3 py-1 bg-gray-200 text-gray-800 text-sm font-bold rounded-md border border-gray-400">
-                        {prof.title}
-                      </span>
-                    </div>
-                    
-                    <p className="text-gray-700 font-medium">
-                      <span className="font-bold">Stated Area:</span> {prof.researchArea || "Not specified"}
-                    </p>
-
-                    {!verification && (
-                      <button 
-                        onClick={() => handleVerify(prof)}
-                        disabled={isVerifyingThis}
-                        className="px-4 py-2 self-start bg-gray-800 text-gray-100 font-semibold rounded-md shadow-sm hover:bg-gray-700 transition-all disabled:opacity-50"
-                      >
-                        {isVerifyingThis ? "Cross-referencing..." : "Verify Identity & Publications"}
-                      </button>
-                    )}
-
-                    {verification && (
-                      <div className="mt-4 p-4 bg-gray-100 border border-gray-300 rounded-lg space-y-2">
-                        <div className="flex items-center gap-2">
-                          <span className="text-gray-800 font-bold">Verification Status:</span>
-                          <span className="px-2 py-1 bg-gray-300 text-gray-900 text-xs font-bold rounded">
-                            {verification.verified ? "CONFIRMED" : "UNVERIFIED"}
-                          </span>
-                        </div>
-                        <p className="text-sm font-medium text-gray-800"><span className="font-bold">Evidence:</span> {verification.evidence}</p>
-                        <p className="text-sm font-medium text-gray-800"><span className="font-bold">Verified Research:</span> {verification.verifiedResearch}</p>
-                        <p className="text-sm font-medium text-gray-800"><span className="font-bold">Recent Publication/Topic:</span> {verification.recentPublicationTopic}</p>
-                        
-                        <button className="mt-2 w-full py-2 bg-gray-800 text-gray-100 rounded-md font-bold shadow-sm hover:bg-gray-700 transition-all">
-                          Send to Proposal Fabricator
-                        </button>
+                  <div 
+                    key={index} 
+                    onClick={() => toggleSelection(prof.name)}
+                    className={`flex items-center justify-between p-4 border-b border-gray-200 cursor-pointer transition-all hover:bg-gray-100 ${isSelected ? 'bg-gray-100/50' : ''}`}
+                  >
+                    <div className="flex items-center gap-4">
+                      <div className={`w-6 h-6 rounded border-2 flex items-center justify-center transition-all ${isSelected ? 'bg-gray-800 border-gray-800' : 'border-gray-400'}`}>
+                        {isSelected && <span className="text-white text-sm font-bold">✓</span>}
                       </div>
-                    )}
+                      <div>
+                        <span className="text-lg font-bold text-gray-900 block">{prof.name}</span>
+                        <span className="text-sm font-semibold text-gray-600">{prof.title}</span>
+                      </div>
+                    </div>
+                    <p className="text-gray-600 font-medium text-sm text-right max-w-xs truncate">
+                      {prof.researchArea || "No initial area specified"}
+                    </p>
                   </div>
                 );
               })}
             </div>
+            
+            <button 
+              onClick={handleLockSelection}
+              disabled={isSaving}
+              className="w-full py-4 bg-gray-800 text-gray-100 rounded-xl font-bold text-lg shadow-md hover:bg-gray-700 hover:shadow-lg transition-all disabled:opacity-50"
+            >
+              {isSaving ? "Saving to Vault..." : "Lock Selection & Save to Vault"}
+            </button>
           </div>
         )}
 
