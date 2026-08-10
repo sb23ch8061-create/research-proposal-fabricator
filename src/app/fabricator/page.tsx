@@ -1,7 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
+import { supabase } from "../../lib/supabase";
 
 interface InsertionPoint {
   id: number;
@@ -17,7 +18,44 @@ export default function Fabricator() {
   const [insertions, setInsertions] = useState<InsertionPoint[]>([]);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [finalProposal, setFinalProposal] = useState("");
+  
+  const [templateTitle, setTemplateTitle] = useState("");
+  const [isSaving, setIsSaving] = useState(false);
+  const [user, setUser] = useState<any>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  
   const router = useRouter();
+
+  useEffect(() => {
+    const initializeWorkspace = async () => {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        router.push("/login");
+        return;
+      }
+      setUser(user);
+
+      const urlParams = new URLSearchParams(window.location.search);
+      const templateId = urlParams.get("id");
+
+      if (templateId) {
+        const { data, error } = await supabase
+          .from('templates')
+          .select('*')
+          .eq('id', templateId)
+          .single();
+          
+        if (data && !error) {
+          setDraft(data.draft_content);
+          setInsertions(data.insertions);
+          setTemplateTitle(data.title);
+        }
+      }
+      setIsLoading(false);
+    };
+    
+    initializeWorkspace();
+  }, [router]);
 
   const handleAnalyze = async () => {
     if (!draft.trim()) return;
@@ -83,6 +121,41 @@ export default function Fabricator() {
     setFinalProposal(result);
   };
 
+  const handleSaveTemplate = async () => {
+    if (!templateTitle.trim()) {
+      alert("Please enter a title for your template before saving.");
+      return;
+    }
+    if (!user) return;
+
+    setIsSaving(true);
+    const { error } = await supabase.from('templates').insert([
+      {
+        user_id: user.id,
+        title: templateTitle,
+        draft_content: draft,
+        insertions: insertions
+      }
+    ]);
+
+    setIsSaving(false);
+
+    if (error) {
+      alert("Failed to save template: " + error.message);
+    } else {
+      alert("Template securely saved to your workspace!");
+      router.push("/dashboard");
+    }
+  };
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen p-8 bg-gradient-to-br from-gray-200 to-gray-400 text-gray-900 flex justify-center items-center">
+        <h1 className="text-2xl font-bold tracking-tight">Restoring Workspace...</h1>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen p-8 bg-gradient-to-br from-gray-200 to-gray-400 text-gray-900">
       <div className="max-w-4xl mx-auto space-y-6">
@@ -99,7 +172,7 @@ export default function Fabricator() {
 
         <div className="bg-gray-100/50 backdrop-blur-md p-8 rounded-2xl shadow-sm border border-gray-300 space-y-4">
           <h2 className="text-xl font-bold">Proposal Draft</h2>
-          <p className="font-medium">Paste your proposal template below. Use markers like [Professor Name] or {'{{Research Area}}'} where you want the system to insert verified information.</p>
+          <p className="font-medium">Paste your proposal template below. Use markers like [Professor Name] where you want the system to insert verified information.</p>
           
           <textarea 
             value={draft}
@@ -119,6 +192,26 @@ export default function Fabricator() {
 
         {insertions.length > 0 && (
           <div className="bg-gray-100/50 backdrop-blur-md p-8 rounded-2xl shadow-sm border border-gray-300 space-y-6">
+            <h2 className="text-2xl font-bold">Save Template to Workspace</h2>
+            <div className="flex gap-4">
+              <input 
+                type="text"
+                value={templateTitle}
+                onChange={(e) => setTemplateTitle(e.target.value)}
+                placeholder="Name your template (e.g., Standard Science Proposal)"
+                className="flex-1 px-4 py-3 rounded-md border border-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-gray-800 transition-all font-medium"
+              />
+              <button 
+                onClick={handleSaveTemplate}
+                disabled={isSaving}
+                className="px-8 py-3 bg-gray-800 text-gray-100 rounded-md font-bold shadow-md hover:bg-gray-700 hover:shadow-lg transition-all disabled:opacity-50"
+              >
+                {isSaving ? "Saving..." : "Save Template"}
+              </button>
+            </div>
+            
+            <hr className="border-gray-300" />
+
             <h2 className="text-2xl font-bold">Review & Fulfill Insertion Points</h2>
             <div className="grid gap-6">
               {insertions.map((insert) => (
