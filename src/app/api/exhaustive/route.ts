@@ -6,6 +6,7 @@ export async function POST(request: Request) {
     const { name, title, department_url } = await request.json();
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
+    // Preserving the exact model string that successfully bypassed your API tier restrictions
     const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
 
     const prompt = `
@@ -14,27 +15,59 @@ export async function POST(request: Request) {
     Title: ${title}
     Anchor Institution URL: ${department_url}
 
-    Your task is to comprehensively research this professor and return ONLY a strictly formatted JSON object. 
+    Your task is to comprehensively research this professor and return ONLY a strictly formatted JSON object covering EXACTLY 32 data points. 
     You must NOT fabricate information. You must disambiguate this professor from others with similar names using the Anchor Institution URL.
 
-    For each category (email, identity, lab, research, recruitment), you must provide:
-    1. "value": The extracted information.
+    For EVERY one of the 32 fields below, you must output a JSON object containing:
+    1. "value": The extracted information (or "Not Found").
     2. "status": Must be EXACTLY one of: "VERIFIED", "PARTIALLY VERIFIED", "CONFLICTING", or "NOT FOUND".
-    3. "sources": An array of specific URL strings used as evidence.
+    3. "sources": An array of URL strings used as evidence.
+    4. "conflict_notes": Any notes on ambiguity or conflicting sources (or null).
 
     Status Logic Rules:
-    - VERIFIED: Confirmed by official Tier 1 institutional sources (.edu, official department/lab pages).
-    - PARTIALLY VERIFIED: Found on a lab page but missing from the main university page, or vice versa.
-    - CONFLICTING: Different sources provide contradictory information.
-    - NOT FOUND: No reliable information exists, or an email is only inferred (inferred emails MUST be marked NOT FOUND).
+    - VERIFIED: Confirmed by official institutional sources (.edu, official department/lab pages).
+    - PARTIALLY VERIFIED: Found on weaker sources or inferred heavily.
+    - CONFLICTING: Different sources provide contradictory information (e.g., two different emails).
+    - NOT FOUND: No reliable information exists. Do NOT guess emails.
 
-    Output EXACTLY this JSON structure and nothing else (no markdown, no backticks):
+    The 32 EXACT keys you must return in the root JSON object:
+    1. full_name
+    2. academic_title
+    3. university
+    4. school_faculty
+    5. department
+    6. official_profile
+    7. institutional_email
+    8. alt_institutional_email
+    9. lab_website
+    10. lab_ownership_verification
+    11. research_areas
+    12. specific_research_topics
+    13. current_research_directions
+    14. research_methods
+    15. materials_systems_studied
+    16. recent_publications
+    17. relevant_recent_publications
+    18. google_scholar
+    19. orcid
+    20. current_projects
+    21. funding_grants
+    22. collaborators
+    23. phd_openings
+    24. postdoc_openings
+    25. ra_openings
+    26. internship_openings
+    27. ug_opportunities
+    28. explicit_recruitment
+    29. lab_recruitment_info
+    30. univ_recruitment_info
+    31. job_board_info
+    32. other_useful_info
+
+    Output EXACTLY this JSON structure and nothing else (no markdown, no backticks). Example format:
     {
-      "email_data": { "value": "email@univ.edu", "status": "VERIFIED", "sources": ["https://..."] },
-      "identity_data": { "value": "Full Name, Affiliation", "status": "VERIFIED", "sources": ["https://..."] },
-      "lab_data": { "value": "Lab Name or PI Status", "status": "NOT FOUND", "sources": [] },
-      "research_data": { "value": "Specific Research Topics", "status": "VERIFIED", "sources": ["https://..."] },
-      "recruitment_data": { "value": "Currently open PhD positions...", "status": "NOT FOUND", "sources": [] }
+      "full_name": { "value": "John Doe", "status": "VERIFIED", "sources": ["https://..."], "conflict_notes": null },
+      "institutional_email": { "value": "Not Found", "status": "NOT FOUND", "sources": [], "conflict_notes": "No email explicitly listed on department page." }
     }
     `;
 
