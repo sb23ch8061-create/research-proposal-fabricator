@@ -72,6 +72,46 @@ function EvidenceDashboard() {
     return name.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
   };
 
+  const handleExportCSV = () => {
+    if (!selectedProfile || evidenceList.length === 0) return;
+
+    const headers = ["Data Point", "Extracted Value", "Verification Status", "Sources", "Conflict Notes"];
+    
+    // Helper to safely escape CSV cells
+    const escapeCSV = (str: string | null | undefined) => {
+      if (!str) return '""';
+      return `"${str.replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    };
+
+    const rows = evidenceList.map(ev => [
+      escapeCSV(formatFieldName(ev.field_name)),
+      escapeCSV(ev.field_value),
+      escapeCSV(ev.verification_status),
+      escapeCSV(ev.source_urls?.join(" ; ")),
+      escapeCSV(ev.conflict_notes)
+    ]);
+
+    // Construct the CSV content with a summary header
+    const csvContent = [
+      ["Professor", escapeCSV(selectedProfile.professor_name)].join(","),
+      ["University", escapeCSV(selectedProfile.university_name)].join(","),
+      ["Department", escapeCSV(selectedProfile.department_name)].join(","),
+      [], // Empty row for spacing
+      headers.map(escapeCSV).join(","), 
+      ...rows.map(r => r.join(","))
+    ].join("\n");
+    
+    // Trigger download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    link.setAttribute("download", `${selectedProfile.professor_name.replace(/\s+/g, '_')}_Verified_Profile.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="min-h-screen p-8 bg-gradient-to-br from-gray-200 to-gray-400 text-gray-900">
       <div className="max-w-7xl mx-auto space-y-6">
@@ -116,9 +156,17 @@ function EvidenceDashboard() {
               </div>
             ) : (
               <div className="space-y-6">
-                <div className="border-b border-gray-300 pb-4">
-                  <h2 className="text-2xl font-bold text-gray-900">{selectedProfile.professor_name}</h2>
-                  <p className="text-gray-700 font-medium">{selectedProfile.university_name} - {selectedProfile.department_name}</p>
+                <div className="border-b border-gray-300 pb-4 flex justify-between items-start">
+                  <div>
+                    <h2 className="text-2xl font-bold text-gray-900">{selectedProfile.professor_name}</h2>
+                    <p className="text-gray-700 font-medium">{selectedProfile.university_name} - {selectedProfile.department_name}</p>
+                  </div>
+                  <button 
+                    onClick={handleExportCSV}
+                    className="px-4 py-2 bg-gray-900 text-gray-100 rounded-md font-bold shadow-sm hover:bg-gray-800 transition-all"
+                  >
+                    Export to CSV
+                  </button>
                 </div>
 
                 {isLoadingEvidence ? (

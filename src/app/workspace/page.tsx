@@ -260,15 +260,23 @@ function FolderWorkspace() {
                 <div className="mt-8 space-y-4 border-t border-gray-300 pt-8">
                   <div className="flex justify-between items-center">
                     <h3 className="text-xl font-bold text-gray-800">Targets Pending Research ({targets.length})</h3>
-                    {targets.length > 0 && (
+                   <div className="flex gap-3">
                       <button 
-                        onClick={handleStartBatchResearch}
-                        disabled={isProcessingBatch}
-                        className="px-6 py-3 bg-blue-700 text-white rounded-xl font-bold shadow-md hover:bg-blue-600 transition-all disabled:opacity-50"
+                        onClick={() => router.push(`/workspace/${currentParentId}`)}
+                        className="px-6 py-3 bg-gray-900 text-white rounded-xl font-bold shadow-md hover:bg-gray-800 transition-all"
                       >
-                        {isProcessingBatch ? "BATCH RUNNING..." : "START BATCH RESEARCH"}
+                        OPEN DATASET SPREADSHEET
                       </button>
-                    )}
+                      {targets.length > 0 && (
+                        <button 
+                          onClick={handleStartBatchResearch}
+                          disabled={isProcessingBatch}
+                          className="px-6 py-3 bg-blue-700 text-white rounded-xl font-bold shadow-md hover:bg-blue-600 transition-all disabled:opacity-50"
+                        >
+                          {isProcessingBatch ? "BATCH RUNNING..." : "START BATCH RESEARCH"}
+                        </button>
+                      )}
+                    </div>
                   </div>
 
                   {targets.length === 0 ? (
