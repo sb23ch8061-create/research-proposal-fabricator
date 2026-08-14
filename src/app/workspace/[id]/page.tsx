@@ -4,12 +4,13 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabase } from "../../../../src/lib/supabase";
 import { fetchCompleteFolderDataset } from "../../../../src/lib/fetchFolderData";
+import * as XLSX from "xlsx"; // NEW: The Excel generation library
 
 interface InspectedCell {
   type: 'AI' | 'CUSTOM';
   profileId: string;
   professorName: string;
-  fieldKey: string; // The AI column name, or the Custom Column ID
+  fieldKey: string; 
   fieldNameDisplay: string;
   aiEvidence?: any;
   manualEdit?: any;
@@ -118,6 +119,90 @@ export default function SpreadsheetWorkspace() {
     });
   };
 
+  // NEW: The robust XLSX Export Engine
+  const handleExportXLSX = () => {
+    if (!dataset) return;
+
+    // 1. Sheet 1: Master Overview (Identity + Custom User Columns)
+    const overviewData = dataset.profiles.map((profile: any) => {
+      const row: any = {
+        "Professor Name": profile.professor_name,
+        "Department": profile.department_name,
+        "Research Status": "COMPLETED",
+      };
+      // Map User's Custom Columns
+      dataset.customColumns.forEach((col: any) => {
+        const edit = dataset.manualEdits.find((m: any) => m.profile_id === profile.id && m.target_key === col.id);
+        row[col.column_name] = edit ? edit.manual_value : "";
+      });
+      return row;
+    });
+
+    // 2. Sheet 2: The Immutable AI Evidence Vault
+    const evidenceData: any[] = [];
+    dataset.profiles.forEach((profile: any) => {
+      const profEvidence = dataset.evidence.filter((e: any) => e.profile_id === profile.id);
+      profEvidence.forEach((ev: any) => {
+        evidenceData.push({
+          "Professor Name": profile.professor_name,
+          "AI Field": formatHeader(ev.field_name),
+          "Extracted Value": ev.field_value,
+          "Verification Status": ev.verification_status,
+          "Conflict Notes": ev.conflict_notes || "None",
+          "Source URLs": ev.source_urls ? ev.source_urls.join("  |  ") : "None"
+        });
+      });
+    });
+
+    // 3. Sheet 3: Manual Overrides Log
+    const overrideData: any[] = [];
+    dataset.profiles.forEach((profile: any) => {
+      const overrides = dataset.manualEdits.filter((m: any) => m.profile_id === profile.id && m.edit_type === 'AI_OVERRIDE');
+      overrides.forEach((ov: any) => {
+        overrideData.push({
+          "Professor Name": profile.professor_name,
+          "Overridden Field": formatHeader(ov.target_key),
+          "Your Manual Value": ov.manual_value
+        });
+      });
+    });
+
+    // 4. Sheet 4: Pending / Failed Queue
+    const queueData = dataset.incompleteQueue.map((inc: any) => ({
+      "Professor Name": inc.extracted_professors.name,
+      "Target URL": inc.extracted_professors.department_url,
+      "Queue Status": inc.status,
+      "Error Details": inc.error_log || ""
+    }));
+
+    // Generate the Excel Workbook
+    const wb = XLSX.utils.book_new();
+
+    if (overviewData.length > 0) {
+      const wsOverview = XLSX.utils.json_to_sheet(overviewData);
+      XLSX.utils.book_append_sheet(wb, wsOverview, "Master Overview");
+    }
+
+    if (evidenceData.length > 0) {
+      const wsEvidence = XLSX.utils.json_to_sheet(evidenceData);
+      XLSX.utils.book_append_sheet(wb, wsEvidence, "AI Evidence Vault");
+    }
+
+    if (overrideData.length > 0) {
+      const wsOverrides = XLSX.utils.json_to_sheet(overrideData);
+      XLSX.utils.book_append_sheet(wb, wsOverrides, "Manual Overrides Log");
+    }
+
+    if (queueData.length > 0) {
+      const wsQueue = XLSX.utils.json_to_sheet(queueData);
+      XLSX.utils.book_append_sheet(wb, wsQueue, "Incomplete Queue");
+    }
+
+    // Clean folder name for the file name
+    const safeFileName = dataset.folder.name.replace(/[^a-zA-Z0-9]/g, '_');
+    XLSX.writeFile(wb, `${safeFileName}_Full_Dataset.xlsx`);
+  };
+
   if (isLoading) return <div className="min-h-screen p-8 bg-gray-200 font-bold text-gray-900 flex items-center justify-center text-xl">Loading Spreadsheet Workspace...</div>;
   if (!dataset) return <div className="min-h-screen p-8 bg-gray-200 font-bold text-red-600 flex items-center justify-center">Error loading data.</div>;
 
@@ -152,7 +237,7 @@ export default function SpreadsheetWorkspace() {
               + Add
             </button>
           </div>
-          <button onClick={() => alert("Export features coming in Step 7!")} className="px-6 py-2 bg-gray-900 text-white rounded-lg font-bold shadow-md hover:bg-gray-800 transition-all">
+          <button onClick={handleExportXLSX} className="px-6 py-2 bg-green-700 text-white rounded-lg font-bold shadow-md hover:bg-green-600 transition-all">
             Export Folder (XLSX)
           </button>
           <button onClick={() => router.push('/workspace')} className="px-6 py-2 bg-gray-300 text-gray-900 rounded-lg font-bold shadow-sm hover:bg-gray-400 transition-all">
@@ -270,7 +355,6 @@ export default function SpreadsheetWorkspace() {
       {inspectedCell && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-gray-100 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-gray-300 flex flex-col max-h-[90vh]">
-            
             <div className="p-6 border-b border-gray-300 bg-white flex justify-between items-start">
               <div>
                 <h3 className="text-xs font-extrabold text-gray-500 uppercase tracking-wider mb-1">
@@ -284,8 +368,6 @@ export default function SpreadsheetWorkspace() {
             </div>
 
             <div className="p-6 overflow-y-auto space-y-6 flex-1 flex flex-col">
-              
-              {/* Immutable AI Data Section (Only visible for AI columns) */}
               {inspectedCell.type === 'AI' && inspectedCell.aiEvidence && (
                 <div className="p-5 bg-white border border-gray-300 rounded-xl space-y-4">
                   <div className="flex justify-between items-center border-b border-gray-100 pb-2">
@@ -309,7 +391,6 @@ export default function SpreadsheetWorkspace() {
                 </div>
               )}
 
-              {/* User Edit Section */}
               <div className="flex-1 flex flex-col">
                 <label className="text-sm font-bold text-gray-800 uppercase tracking-wider mb-2 block">
                   {inspectedCell.type === 'AI' ? 'Your Manual Override (Optional)' : 'Enter Value'}
@@ -321,7 +402,6 @@ export default function SpreadsheetWorkspace() {
                   className="w-full flex-1 min-h-[120px] p-4 bg-white border border-gray-400 rounded-xl font-medium text-gray-900 focus:outline-none focus:ring-2 focus:ring-gray-800 resize-none shadow-inner"
                 />
               </div>
-
             </div>
             
             <div className="p-4 border-t border-gray-300 bg-gray-50 flex justify-end gap-3">
