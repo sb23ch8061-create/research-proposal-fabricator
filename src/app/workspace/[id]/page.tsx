@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import { useRouter, useParams } from "next/navigation";
 import { supabase } from "../../../../src/lib/supabase";
 import { fetchCompleteFolderDataset } from "../../../../src/lib/fetchFolderData";
-import * as XLSX from "xlsx"; // NEW: The Excel generation library
+import * as XLSX from "xlsx";
 
 interface InspectedCell {
   type: 'AI' | 'CUSTOM';
@@ -119,18 +119,10 @@ export default function SpreadsheetWorkspace() {
     });
   };
 
-  // NEW: The robust XLSX Export Engine
   const handleExportXLSX = () => {
     if (!dataset) return;
-
-    // 1. Sheet 1: Master Overview (Identity + Custom User Columns)
     const overviewData = dataset.profiles.map((profile: any) => {
-      const row: any = {
-        "Professor Name": profile.professor_name,
-        "Department": profile.department_name,
-        "Research Status": "COMPLETED",
-      };
-      // Map User's Custom Columns
+      const row: any = { "Professor Name": profile.professor_name, "Department": profile.department_name, "Research Status": "COMPLETED" };
       dataset.customColumns.forEach((col: any) => {
         const edit = dataset.manualEdits.find((m: any) => m.profile_id === profile.id && m.target_key === col.id);
         row[col.column_name] = edit ? edit.manual_value : "";
@@ -138,7 +130,6 @@ export default function SpreadsheetWorkspace() {
       return row;
     });
 
-    // 2. Sheet 2: The Immutable AI Evidence Vault
     const evidenceData: any[] = [];
     dataset.profiles.forEach((profile: any) => {
       const profEvidence = dataset.evidence.filter((e: any) => e.profile_id === profile.id);
@@ -154,7 +145,6 @@ export default function SpreadsheetWorkspace() {
       });
     });
 
-    // 3. Sheet 3: Manual Overrides Log
     const overrideData: any[] = [];
     dataset.profiles.forEach((profile: any) => {
       const overrides = dataset.manualEdits.filter((m: any) => m.profile_id === profile.id && m.edit_type === 'AI_OVERRIDE');
@@ -167,7 +157,6 @@ export default function SpreadsheetWorkspace() {
       });
     });
 
-    // 4. Sheet 4: Pending / Failed Queue
     const queueData = dataset.incompleteQueue.map((inc: any) => ({
       "Professor Name": inc.extracted_professors.name,
       "Target URL": inc.extracted_professors.department_url,
@@ -175,32 +164,77 @@ export default function SpreadsheetWorkspace() {
       "Error Details": inc.error_log || ""
     }));
 
-    // Generate the Excel Workbook
     const wb = XLSX.utils.book_new();
+    if (overviewData.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(overviewData), "Master Overview");
+    if (evidenceData.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(evidenceData), "AI Evidence Vault");
+    if (overrideData.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(overrideData), "Manual Overrides");
+    if (queueData.length > 0) XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(queueData), "Incomplete Queue");
 
-    if (overviewData.length > 0) {
-      const wsOverview = XLSX.utils.json_to_sheet(overviewData);
-      XLSX.utils.book_append_sheet(wb, wsOverview, "Master Overview");
-    }
-
-    if (evidenceData.length > 0) {
-      const wsEvidence = XLSX.utils.json_to_sheet(evidenceData);
-      XLSX.utils.book_append_sheet(wb, wsEvidence, "AI Evidence Vault");
-    }
-
-    if (overrideData.length > 0) {
-      const wsOverrides = XLSX.utils.json_to_sheet(overrideData);
-      XLSX.utils.book_append_sheet(wb, wsOverrides, "Manual Overrides Log");
-    }
-
-    if (queueData.length > 0) {
-      const wsQueue = XLSX.utils.json_to_sheet(queueData);
-      XLSX.utils.book_append_sheet(wb, wsQueue, "Incomplete Queue");
-    }
-
-    // Clean folder name for the file name
     const safeFileName = dataset.folder.name.replace(/[^a-zA-Z0-9]/g, '_');
     XLSX.writeFile(wb, `${safeFileName}_Full_Dataset.xlsx`);
+  };
+
+  // NEW: The Flat CSV Export Engine
+  const handleExportCSV = () => {
+    if (!dataset) return;
+
+    const headers = [
+      "Professor Name", "Department", "Research Status",
+      ...dataset.customColumns.map((c: any) => c.column_name),
+      ...aiColumns.map(c => formatHeader(c) + " (Value)"),
+      ...aiColumns.map(c => formatHeader(c) + " (Status)")
+    ];
+
+    const escapeCSV = (str: string | null | undefined) => {
+      if (!str) return '""';
+      return `"${String(str).replace(/"/g, '""').replace(/\n/g, ' ')}"`;
+    };
+
+    const rows = dataset.profiles.map((profile: any) => {
+      const row = [profile.professor_name, profile.department_name, "COMPLETED"];
+
+      dataset.customColumns.forEach((col: any) => {
+        const edit = dataset.manualEdits.find((m: any) => m.profile_id === profile.id && m.target_key === col.id);
+        row.push(edit ? edit.manual_value : "");
+      });
+
+      const profEvidence = dataset.evidence.filter((e: any) => e.profile_id === profile.id);
+      
+      // Values loop
+      aiColumns.forEach(col => {
+        const ev = profEvidence.find((e: any) => e.field_name === col);
+        const override = dataset.manualEdits.find((m: any) => m.profile_id === profile.id && m.target_key === col);
+        if (override && override.manual_value) row.push(`[OVERRIDE] ${override.manual_value}`);
+        else if (ev) row.push(ev.field_value);
+        else row.push("");
+      });
+
+      // Statuses loop
+      aiColumns.forEach(col => {
+        const ev = profEvidence.find((e: any) => e.field_name === col);
+        const override = dataset.manualEdits.find((m: any) => m.profile_id === profile.id && m.target_key === col);
+        if (override && override.manual_value) row.push("USER OVERRIDE");
+        else if (ev) row.push(ev.verification_status);
+        else row.push("NOT FOUND");
+      });
+
+      return row;
+    });
+
+    const csvContent = [
+      headers.map(escapeCSV).join(","),
+      ...rows.map(r => r.map(escapeCSV).join(","))
+    ].join("\n");
+
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.setAttribute("href", url);
+    const safeFileName = dataset.folder.name.replace(/[^a-zA-Z0-9]/g, '_');
+    link.setAttribute("download", `${safeFileName}_Flat_Dataset.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
   };
 
   if (isLoading) return <div className="min-h-screen p-8 bg-gray-200 font-bold text-gray-900 flex items-center justify-center text-xl">Loading Spreadsheet Workspace...</div>;
@@ -216,7 +250,6 @@ export default function SpreadsheetWorkspace() {
   return (
     <div className="min-h-screen bg-gray-200 text-gray-900 flex flex-col font-sans relative">
       
-      {/* Workspace Header */}
       <div className="p-6 bg-gray-100/80 backdrop-blur-md border-b border-gray-300 flex justify-between items-center shadow-sm z-20">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">{dataset.folder.name}</h1>
@@ -237,16 +270,20 @@ export default function SpreadsheetWorkspace() {
               + Add
             </button>
           </div>
-          <button onClick={handleExportXLSX} className="px-6 py-2 bg-green-700 text-white rounded-lg font-bold shadow-md hover:bg-green-600 transition-all">
-            Export Folder (XLSX)
-          </button>
-          <button onClick={() => router.push('/workspace')} className="px-6 py-2 bg-gray-300 text-gray-900 rounded-lg font-bold shadow-sm hover:bg-gray-400 transition-all">
+          <div className="flex gap-2 bg-gray-300 p-1 rounded-lg border border-gray-400">
+            <button onClick={handleExportXLSX} className="px-4 py-1.5 bg-green-700 text-white rounded-md font-bold shadow-sm hover:bg-green-600 transition-all text-sm">
+              XLSX (Rich)
+            </button>
+            <button onClick={handleExportCSV} className="px-4 py-1.5 bg-gray-800 text-white rounded-md font-bold shadow-sm hover:bg-gray-700 transition-all text-sm">
+              CSV (Flat)
+            </button>
+          </div>
+          <button onClick={() => router.push('/workspace')} className="px-6 py-2 bg-gray-300 text-gray-900 rounded-lg font-bold shadow-sm hover:bg-gray-400 transition-all ml-2">
             Close
           </button>
         </div>
       </div>
 
-      {/* Spreadsheet Data Grid */}
       <div className="flex-1 overflow-auto p-6 relative">
         <div className="inline-block min-w-full align-middle bg-white shadow-lg border border-gray-300 rounded-xl overflow-hidden">
           <table className="min-w-full divide-y divide-gray-300 table-fixed">
@@ -268,7 +305,6 @@ export default function SpreadsheetWorkspace() {
             </thead>
             
             <tbody className="bg-white divide-y divide-gray-200">
-              {/* COMPLETED PROFESSORS */}
               {allProfiles.map((profile: any) => {
                 const profEvidence = dataset.evidence.filter((e: any) => e.profile_id === profile.id);
 
@@ -282,7 +318,6 @@ export default function SpreadsheetWorkspace() {
                       <span className="px-2 py-1 text-[10px] font-bold bg-green-200 text-green-900 rounded-md border border-green-400 tracking-wider">COMPLETED</span>
                     </td>
                     
-                    {/* AI Evidence Cells */}
                     {aiColumns.map(col => {
                       const ev = profEvidence.find((e: any) => e.field_name === col);
                       const manualOverride = dataset.manualEdits.find((m: any) => m.profile_id === profile.id && m.target_key === col);
@@ -312,7 +347,6 @@ export default function SpreadsheetWorkspace() {
                       );
                     })}
 
-                    {/* Custom Column Cells */}
                     {customCols.map((col: any) => {
                       const manualEdit = dataset.manualEdits.find((m: any) => m.profile_id === profile.id && m.target_key === col.id);
                       return (
@@ -329,7 +363,6 @@ export default function SpreadsheetWorkspace() {
                 );
               })}
 
-              {/* PENDING / FAILED PROFESSORS */}
               {incomplete.map((inc: any) => (
                 <tr key={inc.id} className="bg-gray-50 opacity-80">
                   <td className="px-4 py-4 sticky left-0 bg-gray-50 border-r border-gray-200 z-10 shadow-[1px_0_0_0_#e5e7eb]">
@@ -351,7 +384,6 @@ export default function SpreadsheetWorkspace() {
         </div>
       </div>
 
-      {/* Editor & Inspection Modal */}
       {inspectedCell && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
           <div className="bg-gray-100 w-full max-w-2xl rounded-2xl shadow-2xl overflow-hidden border border-gray-300 flex flex-col max-h-[90vh]">
