@@ -33,6 +33,12 @@ export default function TargetWorkspace() {
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTable, setPreviewTable] = useState<any[]>([]);
 
+  // Mechanism 3: University Discovery State
+  const [uniSearchQuery, setUniSearchQuery] = useState("");
+  const [isResearchingUni, setIsResearchingUni] = useState(false);
+  const [uniIntelligence, setUniIntelligence] = useState<any>(null);
+  const [selectedDepartment, setSelectedDepartment] = useState("");
+
   // Evidence Edit State
   const [editEvId, setEditEvId] = useState("");
   const [editEvValue, setEditEvValue] = useState("");
@@ -44,9 +50,7 @@ export default function TargetWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (selectedFolderId) {
-      fetchProfiles(selectedFolderId);
-    }
+    if (selectedFolderId) fetchProfiles(selectedFolderId);
   }, [selectedFolderId]);
 
   useEffect(() => {
@@ -91,7 +95,7 @@ export default function TargetWorkspace() {
     if (selectedFolderId === id) setSelectedFolderId("");
     fetchFolders();
   };
-  
+
   const handleExtraction = async () => {
     if (!rawLiterature.trim() || !selectedProfileId) return;
     setIsExtracting(true);
@@ -166,6 +170,34 @@ export default function TargetWorkspace() {
     setIsProcessingFile(false);
   };
 
+  const executeUniversityResearch = async () => {
+    if (!uniSearchQuery.trim()) return;
+    setIsResearchingUni(true);
+    try {
+      const response = await fetch('/api/university-intelligence', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ universityName: uniSearchQuery })
+      });
+      const result = await response.json();
+      if (result.success) setUniIntelligence(result.intelligenceData);
+    } catch (error: any) { alert(error.message); }
+    setIsResearchingUni(false);
+  };
+
+  const discoverProfessorsInDepartment = async () => {
+    if (!selectedDepartment || !selectedFolderId) return alert("Select a folder and department.");
+    setIsExtractingLink(true);
+    try {
+      // Reusing the robust web-research engine to find professors matching the department
+      const formDataToSend = new FormData();
+      formDataToSend.append('sparseData', `Find top 3 active professors in ${selectedDepartment} at ${uniSearchQuery}`);
+      await processEnrichmentPayload(formDataToSend);
+      alert("Department Targets Acquired & Enriched.");
+    } catch (err: any) { alert(err.message); }
+    setIsExtractingLink(false);
+  };
+
   const processEnrichmentPayload = async (formData: FormData) => {
     const { data: { user } } = await supabase.auth.getUser();
     const response = await fetch('/api/enrich-target', { method: 'POST', body: formData });
@@ -198,8 +230,8 @@ export default function TargetWorkspace() {
   if (isLoading) return <div className="p-8 aesthetic">Loading Target Workspace...</div>;
 
   return (
-    <div className="p-8 max-w-7xl mx-auto font-sans aesthetic">
-      <div className="flex justify-between items-center border-b border-gray-400 pb-4 mb-8">
+    <div className="p-8 max-w-7xl mx-auto font-sans aesthetic flex flex-col h-screen">
+      <div className="flex justify-between items-center border-b border-gray-400 pb-4 mb-8 shrink-0">
         <h1 className="text-3xl font-extrabold uppercase">Target Workspace</h1>
         <div className="flex gap-4">
           <button onClick={() => router.push("/workspace/grid")} className="px-6 py-2 bg-blue-800 text-white rounded-xl font-bold uppercase tracking-wider">Macroscopic Data Grid</button>
@@ -249,18 +281,18 @@ export default function TargetWorkspace() {
         </div>
       )}
 
-      <div className="grid grid-cols-1 md:grid-cols-12 gap-8">
+      <div className="grid grid-cols-1 md:grid-cols-12 gap-8 flex-1 min-h-0">
         
         {/* COLUMN 1: FOLDERS */}
-        <div className="md:col-span-3 border p-6 rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm">
-          <h2 className="font-extrabold uppercase mb-4 tracking-wider">1. Folders</h2>
-          <div className="flex gap-2 mb-4">
+        <div className="md:col-span-3 border p-6 rounded-xl bg-gray-50 flex flex-col shadow-sm min-h-0">
+          <h2 className="font-extrabold uppercase mb-4 tracking-wider shrink-0">1. Folders</h2>
+          <div className="flex gap-2 mb-4 shrink-0">
             <input value={newFolderName} onChange={e => setNewFolderName(e.target.value)} placeholder="New Folder" className="border border-gray-400 p-3 flex-1 rounded-xl font-bold w-full" />
             <button onClick={createFolder} className="bg-gray-900 text-white px-4 py-3 rounded-xl font-bold">+</button>
           </div>
-          <div className="space-y-3 overflow-y-auto pr-2">
+          <div className="space-y-3 overflow-y-auto pr-2 flex-1 min-h-0">
             {folders.map(f => (
-              <div key={f.id} onClick={() => setSelectedFolderId(f.id)} className={`p-4 border rounded-xl cursor-pointer transition-all ${selectedFolderId === f.id ? 'bg-gray-200 border-gray-600' : 'bg-white'}`}>
+              <div key={f.id} className={`p-4 border rounded-xl transition-all ${selectedFolderId === f.id ? 'bg-gray-200 border-gray-600' : 'bg-white'}`}>
                 {editingFolderId === f.id ? (
                   <div className="flex gap-2">
                     <input value={editFolderName} onChange={e => setEditFolderName(e.target.value)} className="border border-gray-400 p-1 text-sm flex-1 font-bold rounded" />
@@ -282,7 +314,7 @@ export default function TargetWorkspace() {
         </div>
 
         {/* COLUMN 2: ACQUISITION */}
-        <div className="md:col-span-5 border rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm overflow-hidden">
+        <div className="md:col-span-5 border rounded-xl bg-gray-50 flex flex-col shadow-sm overflow-hidden min-h-0">
           <div className="flex border-b border-gray-300 bg-gray-200 shrink-0 overflow-x-auto">
             <button onClick={() => setActiveMechanism(1)} className={`px-4 py-4 font-extrabold text-xs uppercase tracking-wider whitespace-nowrap ${activeMechanism === 1 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>Link</button>
             <button onClick={() => setActiveMechanism(2)} className={`px-4 py-4 font-extrabold text-xs uppercase tracking-wider whitespace-nowrap ${activeMechanism === 2 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>File Import</button>
@@ -314,9 +346,38 @@ export default function TargetWorkspace() {
               )}
 
               {activeMechanism === 3 && (
-                <div className="space-y-4">
+                <div className="space-y-4 flex flex-col h-[300px]">
                   <h3 className="font-extrabold uppercase">Discover By University</h3>
-                  <button disabled className="w-full bg-gray-300 text-gray-500 px-4 py-4 rounded-xl font-bold uppercase tracking-wider opacity-50">Awaiting Phase 4</button>
+                  <div className="flex gap-2">
+                    <input value={uniSearchQuery} onChange={e => setUniSearchQuery(e.target.value)} placeholder="University Name" className="w-full border border-gray-400 p-3 rounded-xl font-bold" />
+                    <button onClick={executeUniversityResearch} disabled={isResearchingUni} className="bg-blue-800 text-white px-4 py-3 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">Search</button>
+                  </div>
+                  
+                  {uniIntelligence && (
+                    <div className="flex-1 overflow-y-auto border border-gray-300 p-4 rounded-xl bg-white mt-2 space-y-3">
+                      <div className="text-xs bg-green-100 text-green-800 p-2 rounded font-bold uppercase text-center">Institutional Intelligence Acquired</div>
+                      
+                      <div className="text-sm">
+                        <span className="font-extrabold uppercase text-gray-500 text-xs block">PhD Admission</span>
+                        <span className="font-bold">{uniIntelligence.phd_admission_process}</span>
+                      </div>
+                      <div className="text-sm">
+                        <span className="font-extrabold uppercase text-gray-500 text-xs block">PhD Funding Model</span>
+                        <span className="font-bold">{uniIntelligence.phd_funding}</span>
+                      </div>
+                      
+                      <div className="mt-4 border-t pt-4">
+                        <span className="font-extrabold uppercase text-gray-500 text-xs block mb-2">Select Target Department</span>
+                        <select onChange={e => setSelectedDepartment(e.target.value)} className="w-full border border-gray-400 p-3 rounded-xl font-bold bg-gray-50 mb-4">
+                          <option value="">-- Choose Department --</option>
+                          {uniIntelligence.departments?.map((dep: string) => <option key={dep} value={dep}>{dep}</option>)}
+                        </select>
+                        <button onClick={discoverProfessorsInDepartment} disabled={!selectedDepartment || !selectedFolderId || isExtractingLink} className="w-full bg-gray-900 text-white px-4 py-3 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">
+                          {isExtractingLink ? "Researching Professors..." : "Discover Professors"}
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
@@ -336,14 +397,13 @@ export default function TargetWorkspace() {
         </div>
 
         {/* COLUMN 3: AUTOMATED EVIDENCE VAULT WITH MODIFICATION */}
-        <div className="md:col-span-4 border p-6 rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm overflow-hidden">
+        <div className="md:col-span-4 border p-6 rounded-xl bg-gray-50 flex flex-col shadow-sm overflow-hidden min-h-0">
           <h2 className="font-extrabold uppercase mb-4 tracking-wider shrink-0">3. Verified Evidence Vault</h2>
           
           <div className="flex-1 flex flex-col min-h-0">
             {selectedProfileId ? (
               <div className="flex flex-col h-full">
-                {/* Legacy Manual Extraction Box restored per original requirements */}
-                <div className="flex flex-col gap-3 border-b border-gray-300 pb-6 mb-4">
+                <div className="flex flex-col gap-3 border-b border-gray-300 pb-6 mb-4 shrink-0">
                   <textarea value={rawLiterature} onChange={e => setRawLiterature(e.target.value)} placeholder="Paste URLs or text for deep extraction..." className="w-full h-24 border border-gray-400 p-3 rounded-xl resize-none font-bold" />
                   <button onClick={handleExtraction} disabled={isExtracting} className="bg-gray-900 text-white px-4 py-3 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">
                     {isExtracting ? "Extracting..." : "Extract Data"}
