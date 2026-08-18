@@ -38,10 +38,24 @@ export default function TemplateBuilder() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
+      const regex = /\[INSERTION:\s*(.*?)\s*\]/g;
+      let match;
+      const insertionsPayload = [];
+      let idCounter = 1;
+      
+      while ((match = regex.exec(content)) !== null) {
+        insertionsPayload.push({
+          id: idCounter++,
+          type: "Factual Lookup",
+          target: match[1]
+        });
+      }
+
       const { error } = await supabase.from('templates').insert({
         user_id: user.id,
         title: title,
-        draft_content: content
+        draft_content: content,
+        insertions: insertionsPayload 
       });
 
       if (error) throw error;
