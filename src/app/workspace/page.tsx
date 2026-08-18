@@ -20,9 +20,7 @@ export default function TargetWorkspace() {
   const [savedEvidence, setSavedEvidence] = useState<any[]>([]);
 
   // Mechanism Control
-  const [activeMechanism, setActiveMechanism] = useState<1 | 2 | 3 | 4>(1);
-  const [zoomLevel, setZoomLevel] = useState(1);
-  const [folderGridData, setFolderGridData] = useState<any[]>([]);
+  const [activeMechanism, setActiveMechanism] = useState<1 | 2 | 3>(1);
 
   // Mechanism 1: Link State
   const [targetUrl, setTargetUrl] = useState("");
@@ -38,6 +36,8 @@ export default function TargetWorkspace() {
   // Evidence Edit State
   const [editEvId, setEditEvId] = useState("");
   const [editEvValue, setEditEvValue] = useState("");
+  const [rawLiterature, setRawLiterature] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
 
   useEffect(() => {
     fetchFolders();
@@ -46,9 +46,8 @@ export default function TargetWorkspace() {
   useEffect(() => {
     if (selectedFolderId) {
       fetchProfiles(selectedFolderId);
-      if (activeMechanism === 4) loadFolderGrid(selectedFolderId);
     }
-  }, [selectedFolderId, activeMechanism]);
+  }, [selectedFolderId]);
 
   useEffect(() => {
     if (selectedProfileId) fetchEvidence(selectedProfileId);
@@ -91,6 +90,21 @@ export default function TargetWorkspace() {
     await supabase.from('research_folders').delete().eq('id', id);
     if (selectedFolderId === id) setSelectedFolderId("");
     fetchFolders();
+  };
+  
+  const handleExtraction = async () => {
+    if (!rawLiterature.trim() || !selectedProfileId) return;
+    setIsExtracting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const response = await fetch("/api/extract", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawLiterature }) });
+      const result = await response.json();
+      const evidencePayload = result.evidence.map((ev: any) => ({ profile_id: selectedProfileId, user_id: user?.id, field_name: ev.field_name, field_value: ev.field_value, verification_status: 'UNVERIFIED' }));
+      await supabase.from('professor_evidence').delete().eq('profile_id', selectedProfileId);
+      await supabase.from('professor_evidence').insert(evidencePayload);
+      setRawLiterature(""); fetchEvidence(selectedProfileId);
+    } catch (err: any) {}
+    setIsExtracting(false);
   };
 
   const executeLinkExtraction = async () => {
@@ -173,7 +187,6 @@ export default function TargetWorkspace() {
       }
     }
     fetchProfiles(selectedFolderId);
-    if (activeMechanism === 4) loadFolderGrid(selectedFolderId);
   };
 
   const saveEvidenceModification = async (id: string) => {
@@ -182,35 +195,16 @@ export default function TargetWorkspace() {
     fetchEvidence(selectedProfileId);
   };
 
-  const loadFolderGrid = async (folderId: string) => {
-    const { data: profs } = await supabase.from('verified_profiles').select('*').eq('folder_id', folderId);
-    if (!profs) return;
-    
-    let grid = [];
-    for (const p of profs) {
-      const { data: evs } = await supabase.from('professor_evidence').select('*').eq('profile_id', p.id);
-      let row: any = { Name: p.professor_name, Department: p.department_name, University: p.university_name };
-      evs?.forEach(e => { row[e.field_name] = e.field_value; });
-      grid.push(row);
-    }
-    setFolderGridData(grid);
-  };
-
-  const exportFolderToExcel = () => {
-    if (folderGridData.length === 0) return alert("No data to export.");
-    const ws = XLSX.utils.json_to_sheet(folderGridData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Verified Targets");
-    XLSX.writeFile(wb, "Target_Workspace_Export.xlsx");
-  };
-
   if (isLoading) return <div className="p-8 aesthetic">Loading Target Workspace...</div>;
 
   return (
     <div className="p-8 max-w-7xl mx-auto font-sans aesthetic">
       <div className="flex justify-between items-center border-b border-gray-400 pb-4 mb-8">
         <h1 className="text-3xl font-extrabold uppercase">Target Workspace</h1>
-        <button onClick={() => router.push("/dashboard")} className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold uppercase tracking-wider">Back to Command Center</button>
+        <div className="flex gap-4">
+          <button onClick={() => router.push("/workspace/grid")} className="px-6 py-2 bg-blue-800 text-white rounded-xl font-bold uppercase tracking-wider">Macroscopic Data Grid</button>
+          <button onClick={() => router.push("/dashboard")} className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold uppercase tracking-wider">Back to Command Center</button>
+        </div>
       </div>
 
       {(previewTable.length > 0 || previewImage) && (
@@ -287,13 +281,12 @@ export default function TargetWorkspace() {
           </div>
         </div>
 
-        {/* COLUMN 2: ACQUISITION & GRID */}
+        {/* COLUMN 2: ACQUISITION */}
         <div className="md:col-span-5 border rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm overflow-hidden">
           <div className="flex border-b border-gray-300 bg-gray-200 shrink-0 overflow-x-auto">
             <button onClick={() => setActiveMechanism(1)} className={`px-4 py-4 font-extrabold text-xs uppercase tracking-wider whitespace-nowrap ${activeMechanism === 1 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>Link</button>
             <button onClick={() => setActiveMechanism(2)} className={`px-4 py-4 font-extrabold text-xs uppercase tracking-wider whitespace-nowrap ${activeMechanism === 2 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>File Import</button>
             <button onClick={() => setActiveMechanism(3)} className={`px-4 py-4 font-extrabold text-xs uppercase tracking-wider whitespace-nowrap ${activeMechanism === 3 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>University</button>
-            <button onClick={() => setActiveMechanism(4)} className={`px-4 py-4 font-extrabold text-xs uppercase tracking-wider whitespace-nowrap ${activeMechanism === 4 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>Data Grid</button>
           </div>
 
           <div className="p-6 flex-1 flex flex-col min-h-0 relative">
@@ -328,50 +321,17 @@ export default function TargetWorkspace() {
               )}
             </div>
 
-            {/* FOLDER DATA GRID (Mechanism 4) */}
-            {activeMechanism === 4 && (
-              <div className="flex-1 flex flex-col min-h-0 bg-white border border-gray-300 rounded-xl overflow-hidden mt-4">
-                <div className="p-3 bg-gray-200 flex justify-between items-center shrink-0">
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold uppercase">Zoom:</span>
-                    <input type="range" min="0.5" max="1.5" step="0.1" value={zoomLevel} onChange={e => setZoomLevel(parseFloat(e.target.value))} className="w-24" />
+            <div className="mt-8 border-t border-gray-300 pt-6 flex-1 flex flex-col min-h-0">
+              <h3 className="font-extrabold uppercase mb-4 text-gray-500 tracking-wider text-xs shrink-0">Acquired Targets</h3>
+              <div className="space-y-2 overflow-y-auto flex-1 min-h-0 pr-2">
+                {profiles.map(p => (
+                  <div key={p.id} onClick={() => setSelectedProfileId(p.id)} className={`p-4 border rounded-xl cursor-pointer transition-all ${selectedProfileId === p.id ? 'bg-gray-200 border-gray-600' : 'bg-white'}`}>
+                    <div className="font-extrabold text-gray-900">{p.professor_name}</div>
+                    <div className="text-xs text-gray-600 font-bold mt-1">{p.department_name}</div>
                   </div>
-                  <button onClick={exportFolderToExcel} className="bg-gray-900 text-white px-3 py-1 rounded text-xs font-bold uppercase">Export Excel</button>
-                </div>
-                <div className="flex-1 overflow-auto p-4 bg-gray-50">
-                  <div style={{ transform: `scale(${zoomLevel})`, transformOrigin: 'top left' }}>
-                    <table className="text-left text-xs whitespace-nowrap bg-white border border-gray-300">
-                      <thead className="bg-gray-200 uppercase font-bold text-gray-700">
-                        <tr>
-                          {folderGridData.length > 0 && Object.keys(folderGridData[0]).map(k => <th key={k} className="p-2 border">{k}</th>)}
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {folderGridData.map((row, i) => (
-                          <tr key={i} className="border-b">
-                            {Object.values(row).map((v: any, j) => <td key={j} className="p-2 border">{v}</td>)}
-                          </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
+                ))}
               </div>
-            )}
-
-            {activeMechanism !== 4 && (
-              <div className="mt-8 border-t border-gray-300 pt-6 flex-1 flex flex-col min-h-0">
-                <h3 className="font-extrabold uppercase mb-4 text-gray-500 tracking-wider text-xs shrink-0">Acquired Targets</h3>
-                <div className="space-y-2 overflow-y-auto flex-1 min-h-0 pr-2">
-                  {profiles.map(p => (
-                    <div key={p.id} onClick={() => setSelectedProfileId(p.id)} className={`p-4 border rounded-xl cursor-pointer transition-all ${selectedProfileId === p.id ? 'bg-gray-200 border-gray-600' : 'bg-white'}`}>
-                      <div className="font-extrabold text-gray-900">{p.professor_name}</div>
-                      <div className="text-xs text-gray-600 font-bold mt-1">{p.department_name}</div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+            </div>
           </div>
         </div>
 
@@ -381,36 +341,46 @@ export default function TargetWorkspace() {
           
           <div className="flex-1 flex flex-col min-h-0">
             {selectedProfileId ? (
-              <div className="overflow-y-auto flex-1 pr-2 space-y-3 min-h-0">
-                {savedEvidence.length === 0 ? (
-                  <p className="text-sm font-bold text-center mt-10 text-gray-500">Evidence will automatically appear here once extracted.</p>
-                ) : (
-                  savedEvidence.map(ev => (
-                    <div key={ev.id} className="bg-white p-4 border border-gray-300 rounded-xl shadow-sm relative group">
-                      <div className="flex justify-between items-start mb-2">
-                        <span className="font-extrabold uppercase text-xs text-gray-500 tracking-wider">{ev.field_name.replace(/_/g, ' ')}</span>
-                        <div className="flex gap-2 items-center">
-                          <button onClick={() => {setEditEvId(ev.id); setEditEvValue(ev.field_value);}} className="text-[10px] px-2 py-1 bg-gray-200 text-gray-700 font-bold uppercase rounded opacity-0 group-hover:opacity-100 transition-opacity">Edit</button>
-                          <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${ev.verification_status === 'VERIFIED' ? 'bg-gray-300 text-gray-900' : 'bg-gray-200 text-gray-700'}`}>
-                            {ev.verification_status}
-                          </span>
-                        </div>
-                      </div>
-                      
-                      {editEvId === ev.id ? (
-                        <div className="mt-2">
-                          <textarea value={editEvValue} onChange={e => setEditEvValue(e.target.value)} className="w-full border border-gray-400 p-2 rounded text-sm font-bold resize-none h-20" />
-                          <div className="flex justify-end gap-2 mt-2">
-                            <button onClick={() => setEditEvId("")} className="px-3 py-1 bg-gray-200 text-gray-700 text-xs font-bold rounded uppercase">Cancel</button>
-                            <button onClick={() => saveEvidenceModification(ev.id)} className="px-3 py-1 bg-gray-900 text-white text-xs font-bold rounded uppercase">Save Override</button>
+              <div className="flex flex-col h-full">
+                {/* Legacy Manual Extraction Box restored per original requirements */}
+                <div className="flex flex-col gap-3 border-b border-gray-300 pb-6 mb-4">
+                  <textarea value={rawLiterature} onChange={e => setRawLiterature(e.target.value)} placeholder="Paste URLs or text for deep extraction..." className="w-full h-24 border border-gray-400 p-3 rounded-xl resize-none font-bold" />
+                  <button onClick={handleExtraction} disabled={isExtracting} className="bg-gray-900 text-white px-4 py-3 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">
+                    {isExtracting ? "Extracting..." : "Extract Data"}
+                  </button>
+                </div>
+                
+                <div className="overflow-y-auto flex-1 pr-2 space-y-3 min-h-0">
+                  {savedEvidence.length === 0 ? (
+                    <p className="text-sm font-bold text-center mt-10 text-gray-500">Evidence will automatically appear here once extracted.</p>
+                  ) : (
+                    savedEvidence.map(ev => (
+                      <div key={ev.id} className="bg-white p-4 border border-gray-300 rounded-xl shadow-sm relative group">
+                        <div className="flex justify-between items-start mb-2">
+                          <span className="font-extrabold uppercase text-xs text-gray-500 tracking-wider">{ev.field_name.replace(/_/g, ' ')}</span>
+                          <div className="flex gap-2 items-center">
+                            <button onClick={() => {setEditEvId(ev.id); setEditEvValue(ev.field_value);}} className="text-[10px] px-2 py-1 bg-gray-200 text-gray-700 font-bold uppercase rounded opacity-0 group-hover:opacity-100 transition-opacity">Edit</button>
+                            <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${ev.verification_status === 'VERIFIED' ? 'bg-gray-300 text-gray-900' : 'bg-gray-200 text-gray-700'}`}>
+                              {ev.verification_status}
+                            </span>
                           </div>
                         </div>
-                      ) : (
-                        <span className="text-gray-900 font-bold text-sm leading-relaxed whitespace-pre-wrap">{ev.field_value}</span>
-                      )}
-                    </div>
-                  ))
-                )}
+                        
+                        {editEvId === ev.id ? (
+                          <div className="mt-2">
+                            <textarea value={editEvValue} onChange={e => setEditEvValue(e.target.value)} className="w-full border border-gray-400 p-2 rounded text-sm font-bold resize-none h-20" />
+                            <div className="flex justify-end gap-2 mt-2">
+                              <button onClick={() => setEditEvId("")} className="px-3 py-1 bg-gray-200 text-gray-700 text-xs font-bold rounded uppercase">Cancel</button>
+                              <button onClick={() => saveEvidenceModification(ev.id)} className="px-3 py-1 bg-gray-900 text-white text-xs font-bold rounded uppercase">Save Override</button>
+                            </div>
+                          </div>
+                        ) : (
+                          <span className="text-gray-900 font-bold text-sm leading-relaxed whitespace-pre-wrap">{ev.field_value}</span>
+                        )}
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             ) : (
               <p className="text-sm font-bold text-center mt-10 text-gray-500">Select an acquired target to view their automatically enriched evidence.</p>
