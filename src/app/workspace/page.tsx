@@ -11,6 +11,7 @@ export default function TargetWorkspace() {
   const [isLoading, setIsLoading] = useState(true);
   const [folders, setFolders] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
+  const [qsUniversities, setQsUniversities] = useState<any[]>([]);
   
   const [newFolderName, setNewFolderName] = useState("");
   const [editingFolderId, setEditingFolderId] = useState("");
@@ -19,27 +20,23 @@ export default function TargetWorkspace() {
   const [selectedProfileId, setSelectedProfileId] = useState("");
   const [savedEvidence, setSavedEvidence] = useState<any[]>([]);
 
-  // Mechanism Control
   const [activeMechanism, setActiveMechanism] = useState<1 | 2 | 3>(1);
 
-  // Mechanism 1: Link State
   const [targetUrl, setTargetUrl] = useState("");
   const [isExtractingLink, setIsExtractingLink] = useState(false);
 
-  // Mechanism 2: File/Image Import State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
   const [previewFile, setPreviewFile] = useState<File | null>(null);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTable, setPreviewTable] = useState<any[]>([]);
 
-  // Mechanism 3: University Discovery State
   const [uniSearchQuery, setUniSearchQuery] = useState("");
+  const [showUniDropdown, setShowUniDropdown] = useState(false);
   const [isResearchingUni, setIsResearchingUni] = useState(false);
   const [uniIntelligence, setUniIntelligence] = useState<any>(null);
   const [selectedDepartment, setSelectedDepartment] = useState("");
 
-  // Evidence Edit State
   const [editEvId, setEditEvId] = useState("");
   const [editEvValue, setEditEvValue] = useState("");
   const [rawLiterature, setRawLiterature] = useState("");
@@ -50,12 +47,31 @@ export default function TargetWorkspace() {
   }, []);
 
   useEffect(() => {
-    if (selectedFolderId) fetchProfiles(selectedFolderId);
+    if (selectedFolderId) {
+      fetchProfiles(selectedFolderId);
+    }
   }, [selectedFolderId]);
 
   useEffect(() => {
     if (selectedProfileId) fetchEvidence(selectedProfileId);
   }, [selectedProfileId]);
+
+  useEffect(() => {
+    if (!uniSearchQuery.trim()) {
+      setQsUniversities([]);
+      return;
+    }
+    const delayDebounceFn = setTimeout(async () => {
+      const { data } = await supabase
+        .from('qs_universities')
+        .select('*')
+        .ilike('university_name', `%${uniSearchQuery}%`)
+        .limit(50);
+      if (data) setQsUniversities(data);
+    }, 300);
+
+    return () => clearTimeout(delayDebounceFn);
+  }, [uniSearchQuery]);
 
   const fetchFolders = async () => {
     setIsLoading(true);
@@ -189,7 +205,6 @@ export default function TargetWorkspace() {
     if (!selectedDepartment || !selectedFolderId) return alert("Select a folder and department.");
     setIsExtractingLink(true);
     try {
-      // Reusing the robust web-research engine to find professors matching the department
       const formDataToSend = new FormData();
       formDataToSend.append('sparseData', `Find top 3 active professors in ${selectedDepartment} at ${uniSearchQuery}`);
       await processEnrichmentPayload(formDataToSend);
@@ -283,7 +298,6 @@ export default function TargetWorkspace() {
 
       <div className="grid grid-cols-1 md:grid-cols-12 gap-8 flex-1 min-h-0">
         
-        {/* COLUMN 1: FOLDERS */}
         <div className="md:col-span-3 border p-6 rounded-xl bg-gray-50 flex flex-col shadow-sm min-h-0">
           <h2 className="font-extrabold uppercase mb-4 tracking-wider shrink-0">1. Folders</h2>
           <div className="flex gap-2 mb-4 shrink-0">
@@ -313,7 +327,6 @@ export default function TargetWorkspace() {
           </div>
         </div>
 
-        {/* COLUMN 2: ACQUISITION */}
         <div className="md:col-span-5 border rounded-xl bg-gray-50 flex flex-col shadow-sm overflow-hidden min-h-0">
           <div className="flex border-b border-gray-300 bg-gray-200 shrink-0 overflow-x-auto">
             <button onClick={() => setActiveMechanism(1)} className={`px-4 py-4 font-extrabold text-xs uppercase tracking-wider whitespace-nowrap ${activeMechanism === 1 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>Link</button>
@@ -346,11 +359,47 @@ export default function TargetWorkspace() {
               )}
 
               {activeMechanism === 3 && (
-                <div className="space-y-4 flex flex-col h-[300px]">
+                <div className="space-y-4 flex flex-col h-[350px]">
                   <h3 className="font-extrabold uppercase">Discover By University</h3>
-                  <div className="flex gap-2">
-                    <input value={uniSearchQuery} onChange={e => setUniSearchQuery(e.target.value)} placeholder="University Name" className="w-full border border-gray-400 p-3 rounded-xl font-bold" />
-                    <button onClick={executeUniversityResearch} disabled={isResearchingUni} className="bg-blue-800 text-white px-4 py-3 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">Search</button>
+                  
+                  <div className="flex gap-2 relative">
+                    <div className="relative flex-1">
+                      <input 
+                        value={uniSearchQuery} 
+                        onChange={e => {
+                          setUniSearchQuery(e.target.value);
+                          setShowUniDropdown(true);
+                        }} 
+                        onFocus={() => setShowUniDropdown(true)}
+                        onBlur={() => setTimeout(() => setShowUniDropdown(false), 200)}
+                        placeholder="Search QS Ranked University..." 
+                        className="w-full border border-gray-400 p-3 rounded-xl font-bold" 
+                      />
+                      {showUniDropdown && (
+                        <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-xl shadow-lg max-h-60 overflow-y-auto">
+                          {qsUniversities.map(u => (
+                              <div
+                                key={u.id}
+                                className="p-3 hover:bg-gray-100 cursor-pointer text-sm border-b last:border-0 flex justify-between items-center"
+                                onClick={() => {
+                                  setUniSearchQuery(u.university_name);
+                                  setShowUniDropdown(false);
+                                }}
+                              >
+                                <span className="font-bold text-gray-800">{u.university_name}</span>
+                                <span className="text-gray-500 font-bold text-[10px] uppercase bg-gray-200 px-2 py-1 rounded">Rank: {u.ranking || 'N/A'}</span>
+                              </div>
+                            ))}
+                          {qsUniversities.length === 0 && uniSearchQuery.trim() !== "" && (
+                            <div className="p-3 text-sm text-gray-500 font-bold">
+                              No matches found.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <button onClick={executeUniversityResearch} disabled={isResearchingUni || !uniSearchQuery.trim()} className="bg-blue-800 text-white px-4 py-3 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 shrink-0">Search</button>
                   </div>
                   
                   {uniIntelligence && (
@@ -396,7 +445,6 @@ export default function TargetWorkspace() {
           </div>
         </div>
 
-        {/* COLUMN 3: AUTOMATED EVIDENCE VAULT WITH MODIFICATION */}
         <div className="md:col-span-4 border p-6 rounded-xl bg-gray-50 flex flex-col shadow-sm overflow-hidden min-h-0">
           <h2 className="font-extrabold uppercase mb-4 tracking-wider shrink-0">3. Verified Evidence Vault</h2>
           

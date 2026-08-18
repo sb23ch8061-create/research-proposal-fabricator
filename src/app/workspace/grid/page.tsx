@@ -92,7 +92,6 @@ export default function DataGridSubpage() {
            console.error("API Call Failed for row:", row.Name);
         }
 
-        // Always save the column data even if AI failed, to ensure the grid updates uniformly
         const { error } = await supabase.from('professor_evidence').insert({
           profile_id: row.id,
           user_id: user?.id,
@@ -135,7 +134,30 @@ export default function DataGridSubpage() {
           <h1 className="text-3xl font-extrabold uppercase">Macroscopic Data Grid</h1>
           <p className="font-bold text-gray-600 mt-1">Dynamically inject new columns and command the AI to research across entire folders.</p>
         </div>
-        <button onClick={() => router.push("/workspace")} className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold uppercase tracking-wider">Back to Workspace</button>
+        <div className="flex gap-4 items-center">
+          
+          {/* TEMPORARY QS SEEDER */}
+          <div className="bg-yellow-100 p-2 rounded-xl flex items-center gap-2 border border-yellow-300 shadow-sm">
+            <span className="text-xs font-bold text-yellow-800 uppercase tracking-wider">Seed QS Data:</span>
+            <input 
+              type="file" 
+              accept=".xlsx" 
+              onChange={async (e) => {
+                const file = e.target.files?.[0];
+                if (!file) return;
+                const fd = new FormData();
+                fd.append('qs_file', file);
+                alert("Seeding database... Please wait for confirmation.");
+                const res = await fetch('/api/seed-qs', { method: 'POST', body: fd });
+                const json = await res.json();
+                alert(json.success ? json.message : "Error: " + json.error);
+              }} 
+              className="text-xs font-bold max-w-[200px] text-gray-700" 
+            />
+          </div>
+
+          <button onClick={() => router.push("/workspace")} className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold uppercase tracking-wider">Back to Workspace</button>
+        </div>
       </div>
 
       <div className="flex gap-8 flex-1 min-h-0">
