@@ -16,6 +16,7 @@ export default function TemplateBuilder() {
   const [isSaving, setIsSaving] = useState(false);
   const [isParsing, setIsParsing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const [templatePreviewUrl, setTemplatePreviewUrl] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTemplates();
@@ -37,6 +38,9 @@ export default function TemplateBuilder() {
     const file = e.target.files?.[0];
     if (!file) return;
 
+    const objectUrl = URL.createObjectURL(file);
+    setTemplatePreviewUrl(objectUrl);
+
     setIsParsing(true);
     try {
       const formDataToSend = new FormData();
@@ -49,7 +53,7 @@ export default function TemplateBuilder() {
       
       setTitle(result.extractedData.title);
       setContent(result.extractedData.draft_content);
-      setEditingId(null); // Treat as a new template draft
+      setEditingId(null);
       
     } catch (error: any) {
       alert("Template parsing failed: " + error.message);
@@ -62,6 +66,7 @@ export default function TemplateBuilder() {
     setEditingId(template.id);
     setTitle(template.title);
     setContent(template.draft_content);
+    setTemplatePreviewUrl(null);
   };
 
   const handleDelete = async (id: string) => {
@@ -80,6 +85,7 @@ export default function TemplateBuilder() {
     setEditingId(null);
     setTitle("");
     setContent("");
+    setTemplatePreviewUrl(null);
   };
 
   const handleSave = async () => {
@@ -92,7 +98,6 @@ export default function TemplateBuilder() {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) throw new Error("Not authenticated");
 
-      // Core semantic parser (do not alter)
       const regex = /\[INSERTION:\s*(.*?)\s*\]/g;
       let match;
       const insertionsPayload = [];
@@ -137,7 +142,7 @@ export default function TemplateBuilder() {
 
   return (
     <div className="min-h-screen p-8 bg-gradient-to-br from-gray-200 to-gray-400 text-gray-900 flex flex-col font-sans">
-      <div className="max-w-6xl mx-auto w-full space-y-6 flex-1 flex flex-col">
+      <div className="max-w-7xl mx-auto w-full space-y-6 flex-1 flex flex-col">
         
         <div className="flex justify-between items-center bg-gray-100/50 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-gray-300">
           <h1 className="text-3xl font-bold tracking-tight">Template Builder</h1>
@@ -170,53 +175,61 @@ export default function TemplateBuilder() {
             )}
           </div>
 
-          <div className="lg:col-span-2 bg-gray-100/80 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-gray-300 flex flex-col">
-            <div className="flex justify-between items-center mb-4">
-               <h2 className="text-xl font-bold text-gray-900">{editingId ? "Edit Template Framework" : "Design New Template"}</h2>
-               
-               <div>
-                 <input type="file" accept=".pdf,.doc,.docx" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
-                 <button onClick={() => fileInputRef.current?.click()} disabled={isParsing} className="bg-gray-800 text-white px-4 py-2 rounded font-bold text-sm disabled:opacity-50">
-                   {isParsing ? "Analyzing Document..." : "Upload External Template"}
-                 </button>
-               </div>
-            </div>
-            
-            <div className="space-y-4 flex-1 flex flex-col">
-              <div>
-                <label className="block text-sm font-extrabold text-gray-700 uppercase tracking-wider mb-2">Framework Title</label>
-                <input 
-                  type="text" 
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  placeholder="e.g., Standard Post-Doc Outreach"
-                  className="w-full px-4 py-3 rounded-xl border border-gray-400 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-gray-800"
-                />
+          <div className="lg:col-span-2 space-y-6 flex flex-col">
+            <div className="bg-gray-100/80 backdrop-blur-md p-6 rounded-2xl shadow-sm border border-gray-300 flex flex-col flex-1">
+              <div className="flex justify-between items-center mb-4">
+                 <h2 className="text-xl font-bold text-gray-900">{editingId ? "Edit Template Framework" : "Design New Template"}</h2>
+                 
+                 <div>
+                   <input type="file" accept=".pdf,.doc,.docx" ref={fileInputRef} onChange={handleFileUpload} className="hidden" />
+                   <button onClick={() => fileInputRef.current?.click()} disabled={isParsing} className="bg-gray-800 text-white px-4 py-2 rounded font-bold text-sm disabled:opacity-50">
+                     {isParsing ? "Analyzing Document..." : "Upload External Template"}
+                   </button>
+                 </div>
               </div>
 
-              <div className="flex-1 flex flex-col">
-                <label className="block text-sm font-extrabold text-gray-700 uppercase tracking-wider mb-2">Draft Content (Use [INSERTION: ...] for AI targets)</label>
-                <textarea 
-                  value={content}
-                  onChange={(e) => setContent(e.target.value)}
-                  placeholder="Dear Professor [INSERTION: professor's last name]..."
-                  className="w-full flex-1 p-4 rounded-xl border border-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-gray-800 resize-none font-medium leading-relaxed"
-                />
-              </div>
+              {templatePreviewUrl && (
+                <div className="border rounded-xl bg-gray-100 h-[400px] overflow-hidden shadow-inner mb-4">
+                  <iframe src={templatePreviewUrl} className="w-full h-full" title="Template Preview" />
+                </div>
+              )}
+              
+              <div className="space-y-4 flex-1 flex flex-col">
+                <div>
+                  <label className="block text-sm font-extrabold text-gray-700 uppercase tracking-wider mb-2">Framework Title</label>
+                  <input 
+                    type="text" 
+                    value={title}
+                    onChange={(e) => setTitle(e.target.value)}
+                    placeholder="e.g., Standard Post-Doc Outreach"
+                    className="w-full px-4 py-3 rounded-xl border border-gray-400 bg-white font-medium focus:outline-none focus:ring-2 focus:ring-gray-800"
+                  />
+                </div>
 
-              <div className="flex gap-4 mt-4">
-                {editingId && (
-                  <button onClick={resetEditor} className="py-4 px-6 bg-gray-300 text-gray-900 rounded-xl font-bold shadow-sm hover:bg-gray-400 transition-all text-lg uppercase tracking-wide">
-                    Cancel Edit
+                <div className="flex-1 flex flex-col">
+                  <label className="block text-sm font-extrabold text-gray-700 uppercase tracking-wider mb-2">Draft Content (Use [INSERTION: ...] for AI targets)</label>
+                  <textarea 
+                    value={content}
+                    onChange={(e) => setContent(e.target.value)}
+                    placeholder="Dear Professor [INSERTION: professor's last name]..."
+                    className="w-full flex-1 p-4 rounded-xl border border-gray-400 bg-white focus:outline-none focus:ring-2 focus:ring-gray-800 resize-none font-medium leading-relaxed min-h-[200px]"
+                  />
+                </div>
+
+                <div className="flex gap-4 mt-4">
+                  {(editingId || templatePreviewUrl) && (
+                    <button onClick={resetEditor} className="py-4 px-6 bg-gray-300 text-gray-900 rounded-xl font-bold shadow-sm hover:bg-gray-400 transition-all text-lg uppercase tracking-wide">
+                      Cancel / Reset
+                    </button>
+                  )}
+                  <button 
+                    onClick={handleSave}
+                    disabled={isSaving}
+                    className="flex-1 py-4 bg-gray-900 text-white rounded-xl font-bold shadow-md hover:bg-gray-800 transition-all disabled:opacity-50 text-lg uppercase tracking-wide"
+                  >
+                    {isSaving ? "Securing Template..." : (editingId ? "Update Template Framework" : "Secure Template Framework")}
                   </button>
-                )}
-                <button 
-                  onClick={handleSave}
-                  disabled={isSaving}
-                  className="flex-1 py-4 bg-gray-900 text-white rounded-xl font-bold shadow-md hover:bg-gray-800 transition-all disabled:opacity-50 text-lg uppercase tracking-wide"
-                >
-                  {isSaving ? "Securing Template..." : (editingId ? "Update Template Framework" : "Secure Template Framework")}
-                </button>
+                </div>
               </div>
             </div>
           </div>
