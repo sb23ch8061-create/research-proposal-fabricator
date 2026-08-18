@@ -67,34 +67,50 @@ export default function DataGridSubpage() {
     try {
       const { data: { user } } = await supabase.auth.getUser();
       const colName = newColumnName.trim();
+      let successCount = 0;
       
       for (const row of gridData) {
-        // Fetch AI research for this specific column
-        const response = await fetch('/api/enrich-column', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            professorName: row.Name,
-            university: row.University,
-            department: row.Department,
-            targetColumn: colName
-          })
-        });
-        const result = await response.json();
-        
-        if (result.success) {
-          // Save the new data point to the Evidence Vault
-          await supabase.from('professor_evidence').insert({
-            profile_id: row.id,
-            user_id: user?.id,
-            field_name: colName.replace(/\s+/g, '_'),
-            field_value: result.extractedData.field_value,
-            verification_status: result.extractedData.field_value === 'NOT VERIFIED' ? 'UNVERIFIED' : 'VERIFIED'
+        let finalFieldValue = "NOT VERIFIED";
+
+        try {
+          const response = await fetch('/api/enrich-column', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              professorName: row.Name,
+              university: row.University,
+              department: row.Department,
+              targetColumn: colName
+            })
           });
+          
+          const result = await response.json();
+          if (result.success && result.extractedData?.field_value) {
+             finalFieldValue = result.extractedData.field_value;
+          }
+        } catch (fetchErr) {
+           console.error("API Call Failed for row:", row.Name);
         }
+
+        // Always save the column data even if AI failed, to ensure the grid updates uniformly
+        const { error } = await supabase.from('professor_evidence').insert({
+          profile_id: row.id,
+          user_id: user?.id,
+          field_name: colName.replace(/\s+/g, '_'),
+          field_value: finalFieldValue,
+          verification_status: finalFieldValue === 'NOT VERIFIED' ? 'UNVERIFIED' : 'VERIFIED'
+        });
+        
+        if (!error) successCount++;
       }
+      
       setNewColumnName("");
       await loadFolderGrid(selectedFolderId);
+
+      if (successCount === 0) {
+        alert("Operation completed, but the database rejected the new entries. Check backend logs.");
+      }
+      
     } catch (error: any) {
       alert("Failed to enrich new column: " + error.message);
     }
@@ -103,7 +119,6 @@ export default function DataGridSubpage() {
 
   const exportFolderToExcel = () => {
     if (gridData.length === 0) return alert("No data to export.");
-    // Remove the internal DB 'id' before export
     const exportData = gridData.map(({ id, ...rest }) => rest);
     const ws = XLSX.utils.json_to_sheet(exportData);
     const wb = XLSX.utils.book_new();
@@ -125,7 +140,6 @@ export default function DataGridSubpage() {
 
       <div className="flex gap-8 flex-1 min-h-0">
         
-        {/* SIDEBAR: Folders */}
         <div className="w-1/5 border p-6 rounded-xl bg-gray-50 flex flex-col shadow-sm min-h-0">
           <h2 className="font-extrabold uppercase mb-4 tracking-wider shrink-0">Select Folder</h2>
           <div className="space-y-3 overflow-y-auto flex-1 pr-2">
@@ -137,7 +151,6 @@ export default function DataGridSubpage() {
           </div>
         </div>
 
-        {/* MAIN GRID AREA */}
         <div className="w-4/5 border rounded-xl bg-white flex flex-col shadow-sm overflow-hidden relative">
           
           <div className="p-4 bg-gray-200 flex justify-between items-center shrink-0 border-b border-gray-300">
@@ -185,7 +198,6 @@ export default function DataGridSubpage() {
               </div>
             )}
             
-            {/* Loading Overlay during enrichment */}
             {isEnrichingColumn && (
                <div className="absolute inset-0 bg-gray-900/40 backdrop-blur-sm flex items-center justify-center z-10">
                  <div className="bg-white p-6 rounded-xl shadow-2xl text-center">
