@@ -13,8 +13,16 @@ export default function TargetWorkspace() {
   const [profiles, setProfiles] = useState<any[]>([]);
   
   const [newFolderName, setNewFolderName] = useState("");
+  const [editingFolderId, setEditingFolderId] = useState("");
+  const [editFolderName, setEditFolderName] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState("");
+  
+  const [newProfileName, setNewProfileName] = useState("");
+  const [newDepartment, setNewDepartment] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState("");
+
+  const [rawLiterature, setRawLiterature] = useState("");
+  const [isExtracting, setIsExtracting] = useState(false);
   const [savedEvidence, setSavedEvidence] = useState<any[]>([]);
 
   // Mechanism Control
@@ -24,9 +32,11 @@ export default function TargetWorkspace() {
   const [targetUrl, setTargetUrl] = useState("");
   const [isExtractingLink, setIsExtractingLink] = useState(false);
 
-  // Mechanism 2: File Import State
+  // Mechanism 2: File/Image Import State
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isProcessingFile, setIsProcessingFile] = useState(false);
+  const [previewFile, setPreviewFile] = useState<File | null>(null);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [previewTable, setPreviewTable] = useState<any[]>([]);
 
   useEffect(() => {
@@ -68,6 +78,42 @@ export default function TargetWorkspace() {
     setNewFolderName(""); fetchFolders();
   };
 
+  const updateFolder = async (id: string) => {
+    if (!editFolderName.trim()) return;
+    await supabase.from('research_folders').update({ name: editFolderName }).eq('id', id);
+    setEditingFolderId(""); fetchFolders();
+  };
+
+  const deleteFolder = async (id: string) => {
+    await supabase.from('research_folders').delete().eq('id', id);
+    if (selectedFolderId === id) setSelectedFolderId("");
+    fetchFolders();
+  };
+
+  const createProfile = async () => {
+    if (!newProfileName.trim() || !selectedFolderId) return;
+    const { data: { user } } = await supabase.auth.getUser();
+    await supabase.from('verified_profiles').insert({
+      user_id: user?.id, folder_id: selectedFolderId, professor_name: newProfileName, department_name: newDepartment || "Unknown"
+    });
+    setNewProfileName(""); setNewDepartment(""); fetchProfiles(selectedFolderId);
+  };
+
+  const handleExtraction = async () => {
+    if (!rawLiterature.trim() || !selectedProfileId) return;
+    setIsExtracting(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      const response = await fetch("/api/extract", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawLiterature }) });
+      const result = await response.json();
+      const evidencePayload = result.evidence.map((ev: any) => ({ profile_id: selectedProfileId, user_id: user?.id, field_name: ev.field_name, field_value: ev.field_value, verification_status: 'UNVERIFIED' }));
+      await supabase.from('professor_evidence').delete().eq('profile_id', selectedProfileId);
+      await supabase.from('professor_evidence').insert(evidencePayload);
+      setRawLiterature(""); fetchEvidence(selectedProfileId);
+    } catch (err: any) {}
+    setIsExtracting(false);
+  };
+
   // MECHANISM 1: LINK EXTRACTION
   const executeLinkExtraction = async () => {
     if (!targetUrl.trim() || !selectedFolderId) return alert("Select a folder and enter a URL.");
@@ -81,35 +127,56 @@ export default function TargetWorkspace() {
     setIsExtractingLink(false);
   };
 
-  // MECHANISM 2: FILE IMPORT
+  // MECHANISM 2: FILE & IMAGE IMPORT
   const handleFileSelection = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = (evt) => {
-      let jsonData: any[] = [];
-      if (file.name.endsWith('.csv')) {
-        jsonData = Papa.parse(evt.target?.result as string, { header: true, skipEmptyLines: true }).data;
-      } else {
-        const wb = XLSX.read(evt.target?.result, { type: 'binary' });
-        jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
-      }
-      setPreviewTable(jsonData);
-    };
-    if (file.name.endsWith('.csv')) reader.readAsText(file); else reader.readAsBinaryString(file);
+    
+    setPreviewFile(file);
+
+    if (file.type.startsWith('image/')) {
+      setPreviewImage(URL.createObjectURL(file));
+      setPreviewTable([]);
+    } else {
+      setPreviewImage(null);
+      const reader = new FileReader();
+      reader.onload = (evt) => {
+        let jsonData: any[] = [];
+        if (file.name.endsWith('.csv')) {
+          jsonData = Papa.parse(evt.target?.result as string, { header: true, skipEmptyLines: true }).data;
+        } else {
+          const wb = XLSX.read(evt.target?.result, { type: 'binary' });
+          jsonData = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]]);
+        }
+        setPreviewTable(jsonData);
+      };
+      if (file.name.endsWith('.csv')) reader.readAsText(file); else reader.readAsBinaryString(file);
+    }
+    
     if (fileInputRef.current) fileInputRef.current.value = "";
   };
 
   const executeBulkEnrichment = async () => {
-    if (previewTable.length === 0 || !selectedFolderId) return;
+    if (!previewFile && previewTable.length === 0) return;
+    if (!selectedFolderId) return alert("Select a folder first.");
+    
     setIsProcessingFile(true);
     try {
-      for (const row of previewTable) {
+      if (previewFile?.type.startsWith('image/')) {
         const formDataToSend = new FormData();
-        formDataToSend.append('sparseData', JSON.stringify(row));
+        formDataToSend.append('file', previewFile);
         await processEnrichmentPayload(formDataToSend);
+      } else {
+        for (const row of previewTable) {
+          const formDataToSend = new FormData();
+          formDataToSend.append('sparseData', JSON.stringify(row));
+          await processEnrichmentPayload(formDataToSend);
+        }
       }
+      
       setPreviewTable([]);
+      setPreviewImage(null);
+      setPreviewFile(null);
     } catch (err: any) { alert(err.message); }
     setIsProcessingFile(false);
   };
@@ -147,36 +214,44 @@ export default function TargetWorkspace() {
         <button onClick={() => router.push("/dashboard")} className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold uppercase tracking-wider">Back to Command Center</button>
       </div>
 
-      {/* PROMINENT DATASET PREVIEW MODAL */}
-      {previewTable.length > 0 && (
+      {/* PROMINENT DATASET & IMAGE PREVIEW MODAL */}
+      {(previewTable.length > 0 || previewImage) && (
         <div className="fixed inset-0 bg-gray-900/80 backdrop-blur-sm z-50 flex items-center justify-center p-8">
           <div className="bg-gray-100 rounded-2xl w-full max-w-6xl max-h-[80vh] flex flex-col overflow-hidden shadow-2xl border border-gray-400">
             <div className="p-6 border-b border-gray-300 bg-white flex justify-between items-center">
               <div>
-                <h2 className="text-2xl font-extrabold uppercase tracking-widest">Dataset Analysis Preview</h2>
-                <p className="text-sm font-bold text-gray-600 mt-1">Detected {previewTable.length} sparse records. The system will independently enrich and cross-check each one.</p>
+                <h2 className="text-2xl font-extrabold uppercase tracking-widest">Source Analysis Preview</h2>
+                <p className="text-sm font-bold text-gray-600 mt-1">
+                  {previewImage ? "Image/Screenshot detected. The system will extract targets and independently enrich them." : `Detected ${previewTable.length} sparse records. The system will independently enrich and cross-check each one.`}
+                </p>
               </div>
               <div className="flex gap-4">
-                <button onClick={() => setPreviewTable([])} disabled={isProcessingFile} className="px-6 py-3 bg-gray-300 rounded-xl font-bold uppercase disabled:opacity-50 text-gray-900">Cancel</button>
+                <button onClick={() => {setPreviewTable([]); setPreviewImage(null); setPreviewFile(null);}} disabled={isProcessingFile} className="px-6 py-3 bg-gray-300 rounded-xl font-bold uppercase disabled:opacity-50 text-gray-900">Cancel</button>
                 <button onClick={executeBulkEnrichment} disabled={isProcessingFile} className="px-8 py-3 bg-gray-900 text-white rounded-xl font-extrabold uppercase tracking-wider disabled:opacity-50">
                   {isProcessingFile ? "Enriching via Web..." : "Run Web Enrichment & Import"}
                 </button>
               </div>
             </div>
-            <div className="p-6 overflow-auto flex-1">
-              <table className="w-full text-left text-sm whitespace-nowrap bg-white border border-gray-300 rounded-lg">
-                <thead className="bg-gray-200 uppercase font-bold text-xs text-gray-700">
-                  <tr>{Object.keys(previewTable[0] || {}).map(k => <th key={k} className="p-4 border-b">{k}</th>)}</tr>
-                </thead>
-                <tbody>
-                  {previewTable.slice(0, 10).map((row, i) => (
-                    <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
-                      {Object.values(row).map((v: any, j) => <td key={j} className="p-4 font-medium text-gray-800">{v}</td>)}
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              {previewTable.length > 10 && <div className="text-center p-4 font-bold text-gray-500">...and {previewTable.length - 10} more rows</div>}
+            <div className="p-6 overflow-auto flex-1 flex flex-col items-center justify-start">
+              {previewImage ? (
+                 <img src={previewImage} alt="Upload Preview" className="max-h-full object-contain rounded-lg border border-gray-400 shadow-sm" />
+              ) : (
+                <>
+                  <table className="w-full text-left text-sm whitespace-nowrap bg-white border border-gray-300 rounded-lg">
+                    <thead className="bg-gray-200 uppercase font-bold text-xs text-gray-700">
+                      <tr>{Object.keys(previewTable[0] || {}).map(k => <th key={k} className="p-4 border-b">{k}</th>)}</tr>
+                    </thead>
+                    <tbody>
+                      {previewTable.slice(0, 10).map((row, i) => (
+                        <tr key={i} className="border-b last:border-0 hover:bg-gray-50">
+                          {Object.values(row).map((v: any, j) => <td key={j} className="p-4 font-medium text-gray-800">{v}</td>)}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {previewTable.length > 10 && <div className="text-center w-full p-4 font-bold text-gray-500">...and {previewTable.length - 10} more rows</div>}
+                </>
+              )}
             </div>
           </div>
         </div>
@@ -193,8 +268,22 @@ export default function TargetWorkspace() {
           </div>
           <div className="space-y-3 overflow-y-auto pr-2">
             {folders.map(f => (
-              <div key={f.id} onClick={() => setSelectedFolderId(f.id)} className={`p-4 border rounded-xl cursor-pointer transition-all ${selectedFolderId === f.id ? 'bg-gray-200 border-gray-600' : 'bg-white'}`}>
-                <span className="font-bold">{f.name}</span>
+              <div key={f.id} className={`p-4 border rounded-xl transition-all ${selectedFolderId === f.id ? 'bg-gray-200 border-gray-600' : 'bg-white'}`}>
+                {editingFolderId === f.id ? (
+                  <div className="flex gap-2">
+                    <input value={editFolderName} onChange={e => setEditFolderName(e.target.value)} className="border p-1 text-sm flex-1 font-bold" />
+                    <button onClick={() => updateFolder(f.id)} className="bg-gray-900 text-white px-2 rounded font-bold text-xs">Save</button>
+                    <button onClick={() => setEditingFolderId("")} className="bg-gray-300 px-2 rounded font-bold text-xs">X</button>
+                  </div>
+                ) : (
+                  <div className="flex justify-between items-center">
+                    <span className="font-bold cursor-pointer flex-1" onClick={() => setSelectedFolderId(f.id)}>{f.name}</span>
+                    <div className="flex gap-2">
+                      <button onClick={() => {setEditingFolderId(f.id); setEditFolderName(f.name);}} className="text-xs font-bold text-gray-500">EDIT</button>
+                      <button onClick={() => deleteFolder(f.id)} className="text-xs font-bold text-red-500">DEL</button>
+                    </div>
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -204,7 +293,7 @@ export default function TargetWorkspace() {
         <div className="md:col-span-5 border rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm overflow-hidden">
           <div className="flex border-b border-gray-300 bg-gray-200">
             <button onClick={() => setActiveMechanism(1)} className={`flex-1 py-4 font-extrabold text-xs uppercase tracking-wider ${activeMechanism === 1 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>Link</button>
-            <button onClick={() => setActiveMechanism(2)} className={`flex-1 py-4 font-extrabold text-xs uppercase tracking-wider ${activeMechanism === 2 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>File</button>
+            <button onClick={() => setActiveMechanism(2)} className={`flex-1 py-4 font-extrabold text-xs uppercase tracking-wider ${activeMechanism === 2 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>File Import</button>
             <button onClick={() => setActiveMechanism(3)} className={`flex-1 py-4 font-extrabold text-xs uppercase tracking-wider ${activeMechanism === 3 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>University</button>
           </div>
 
@@ -213,7 +302,7 @@ export default function TargetWorkspace() {
 
             {activeMechanism === 1 && (
               <div className="space-y-4">
-                <h3 className="font-extrabold uppercase">Extract New Target via Link</h3>
+                <h3 className="font-extrabold uppercase">Extract Target via Link</h3>
                 <p className="text-sm font-bold text-gray-600">Provide a URL. The system will identify the professor and independently enrich missing details.</p>
                 <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder="https://..." className="w-full border border-gray-400 p-3 rounded-xl font-bold" />
                 <button onClick={executeLinkExtraction} disabled={isExtractingLink || !selectedFolderId} className="w-full bg-gray-900 text-white px-4 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">
@@ -224,11 +313,11 @@ export default function TargetWorkspace() {
 
             {activeMechanism === 2 && (
               <div className="space-y-4">
-                <h3 className="font-extrabold uppercase">Import Target Database</h3>
-                <p className="text-sm font-bold text-gray-600">Upload a CSV/Excel with sparse data (e.g. just names/emails). The system will independently research and complete each record.</p>
-                <input type="file" accept=".csv,.xlsx" ref={fileInputRef} onChange={handleFileSelection} className="hidden" />
+                <h3 className="font-extrabold uppercase">Import Target Source</h3>
+                <p className="text-sm font-bold text-gray-600">Upload a CSV, Excel, or Image (Screenshot). The system will independently research and complete each record.</p>
+                <input type="file" accept=".csv,.xlsx,.jpg,.jpeg,.png" ref={fileInputRef} onChange={handleFileSelection} className="hidden" />
                 <button onClick={() => fileInputRef.current?.click()} disabled={!selectedFolderId} className="w-full bg-gray-900 text-white px-4 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 border border-gray-500">
-                  Select File
+                  Upload CSV / Excel / Image
                 </button>
               </div>
             )}
@@ -261,18 +350,27 @@ export default function TargetWorkspace() {
         <div className="md:col-span-4 border p-6 rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm">
           <h2 className="font-extrabold uppercase mb-4 tracking-wider">3. Verified Evidence</h2>
           {selectedProfileId ? (
-            <div className="overflow-y-auto flex-1 pr-2 space-y-3">
-              {savedEvidence.map(ev => (
-                <div key={ev.id} className="bg-white p-4 border border-gray-300 rounded-xl">
-                  <div className="flex justify-between items-start mb-2">
-                    <span className="font-extrabold uppercase text-xs text-gray-500 tracking-wider">{ev.field_name.replace(/_/g, ' ')}</span>
-                    <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${ev.verification_status === 'VERIFIED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                      {ev.verification_status}
-                    </span>
+            <div className="flex flex-col h-full">
+              <div className="flex flex-col gap-3 border-b border-gray-300 pb-6 mb-4">
+                <textarea value={rawLiterature} onChange={e => setRawLiterature(e.target.value)} placeholder="Paste URLs or text for deep extraction..." className="w-full h-24 border border-gray-400 p-3 rounded-xl resize-none font-bold" />
+                <button onClick={handleExtraction} disabled={isExtracting} className="bg-gray-900 text-white px-4 py-3 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">
+                  {isExtracting ? "Extracting..." : "Extract Data"}
+                </button>
+              </div>
+
+              <div className="overflow-y-auto flex-1 pr-2 space-y-3">
+                {savedEvidence.map(ev => (
+                  <div key={ev.id} className="bg-white p-4 border border-gray-300 rounded-xl">
+                    <div className="flex justify-between items-start mb-2">
+                      <span className="font-extrabold uppercase text-xs text-gray-500 tracking-wider">{ev.field_name.replace(/_/g, ' ')}</span>
+                      <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${ev.verification_status === 'VERIFIED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                        {ev.verification_status}
+                      </span>
+                    </div>
+                    <span className="text-gray-900 font-bold text-sm leading-relaxed">{ev.field_value}</span>
                   </div>
-                  <span className="text-gray-900 font-bold text-sm leading-relaxed">{ev.field_value}</span>
-                </div>
-              ))}
+                ))}
+              </div>
             </div>
           ) : <p className="text-sm font-bold text-center mt-10">Select a target to view enriched evidence.</p>}
         </div>
