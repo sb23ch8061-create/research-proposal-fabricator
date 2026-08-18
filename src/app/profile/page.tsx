@@ -72,78 +72,84 @@ export default function ResearcherIdentityVault() {
     setIsSaving(false);
   };
 
-  if (isLoading) return <div className="min-h-screen p-8 aesthetic flex items-center justify-center text-xl font-bold">Loading Identity Vault...</div>;
+  if (isLoading) return <div className="min-h-screen p-8 flex items-center justify-center text-xl font-bold aesthetic">Loading Identity Vault...</div>;
 
   return (
-    <div className="min-h-screen p-8 aesthetic flex flex-col font-sans">
-      <div className="max-w-4xl mx-auto w-full space-y-6 flex-1 flex flex-col">
+    <div className="min-h-screen p-8 flex flex-col font-sans aesthetic">
+      <div className="max-w-6xl mx-auto w-full space-y-10 flex-1 flex flex-col">
         
-        <div className="flex justify-between items-center aesthetic p-6 rounded-2xl shadow-sm border">
-          <h1 className="text-3xl font-bold tracking-tight">Researcher Identity Vault</h1>
-          <button onClick={() => router.push("/dashboard")} className="px-6 py-2 aesthetic rounded-md font-semibold shadow-sm transition-all">
-            Return to Dashboard
+        <div className="flex flex-col md:flex-row justify-between items-center p-10 rounded-2xl shadow-lg border border-gray-400/50 backdrop-blur-xl aesthetic gap-6">
+          <div className="text-left w-full md:w-auto">
+            <h1 className="text-4xl font-extrabold tracking-tight uppercase drop-shadow-sm">Researcher Identity Vault</h1>
+            <p className="mt-3 text-lg font-bold opacity-80 uppercase tracking-widest">Establish Your Academic Parameters</p>
+          </div>
+          <button 
+            onClick={() => router.push("/dashboard")} 
+            className="px-8 py-4 rounded-xl font-bold shadow-md hover:shadow-xl transition-all duration-300 uppercase tracking-wider aesthetic w-full md:w-auto border border-gray-500/30"
+          >
+            Return to Command Center
           </button>
         </div>
 
-        <div className="aesthetic p-8 rounded-2xl shadow-sm border flex-1 space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="p-10 rounded-2xl shadow-md border border-gray-400/60 aesthetic flex-1 space-y-8 flex flex-col justify-start">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
             <div>
-              <label className="block text-sm font-extrabold uppercase tracking-wider mb-2">Full Name</label>
+              <label className="block text-sm font-extrabold uppercase tracking-wider mb-3 drop-shadow-sm">Full Name</label>
               <input 
                 type="text" 
                 name="full_name"
                 value={formData.full_name}
                 onChange={handleChange}
-                className="w-full px-4 py-3 rounded-xl border aesthetic font-medium focus:outline-none focus:ring-2"
+                className="w-full px-5 py-4 rounded-xl border border-gray-400/80 aesthetic font-bold focus:outline-none focus:ring-2 shadow-inner"
               />
             </div>
             <div>
-              <label className="block text-sm font-extrabold uppercase tracking-wider mb-2">Current Title / Affiliation</label>
+              <label className="block text-sm font-extrabold uppercase tracking-wider mb-3 drop-shadow-sm">Current Title / Affiliation</label>
               <input 
                 type="text" 
                 name="current_title"
                 value={formData.current_title}
                 onChange={handleChange}
-                className="w-full px-4 py-3 rounded-xl border aesthetic font-medium focus:outline-none focus:ring-2"
+                className="w-full px-5 py-4 rounded-xl border border-gray-400/80 aesthetic font-bold focus:outline-none focus:ring-2 shadow-inner"
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-sm font-extrabold uppercase tracking-wider mb-2">Primary Research Focus</label>
+            <label className="block text-sm font-extrabold uppercase tracking-wider mb-3 drop-shadow-sm">Primary Research Focus</label>
             <textarea 
               name="research_focus"
               value={formData.research_focus}
               onChange={handleChange}
-              className="w-full min-h-[100px] p-4 rounded-xl border aesthetic focus:outline-none focus:ring-2 resize-none font-medium leading-relaxed"
+              className="w-full min-h-[120px] p-5 rounded-xl border border-gray-400/80 aesthetic focus:outline-none focus:ring-2 resize-none font-bold leading-relaxed shadow-inner"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-extrabold uppercase tracking-wider mb-2">Core Methodologies & Skills</label>
+            <label className="block text-sm font-extrabold uppercase tracking-wider mb-3 drop-shadow-sm">Core Methodologies & Skills</label>
             <textarea 
               name="methodologies"
               value={formData.methodologies}
               onChange={handleChange}
-              className="w-full min-h-[100px] p-4 rounded-xl border aesthetic focus:outline-none focus:ring-2 resize-none font-medium leading-relaxed"
+              className="w-full min-h-[120px] p-5 rounded-xl border border-gray-400/80 aesthetic focus:outline-none focus:ring-2 resize-none font-bold leading-relaxed shadow-inner"
             />
           </div>
 
           <div>
-            <label className="block text-sm font-extrabold uppercase tracking-wider mb-2">Academic Background & Trajectory</label>
+            <label className="block text-sm font-extrabold uppercase tracking-wider mb-3 drop-shadow-sm">Academic Background & Trajectory</label>
             <textarea 
               name="academic_background"
               value={formData.academic_background}
               onChange={handleChange}
-              className="w-full min-h-[150px] p-4 rounded-xl border aesthetic focus:outline-none focus:ring-2 resize-none font-medium leading-relaxed"
+              className="w-full min-h-[160px] p-5 rounded-xl border border-gray-400/80 aesthetic focus:outline-none focus:ring-2 resize-none font-bold leading-relaxed shadow-inner"
             />
           </div>
 
-          <div className="pt-4 flex justify-end">
+          <div className="pt-6 flex justify-end">
             <button 
               onClick={handleSave}
               disabled={isSaving}
-              className="px-8 py-4 aesthetic rounded-xl font-bold shadow-md transition-all disabled:opacity-50 text-lg uppercase tracking-wide"
+              className="px-10 py-5 rounded-xl font-extrabold shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-300 disabled:opacity-50 text-lg uppercase tracking-widest aesthetic border border-gray-500/30"
             >
               {isSaving ? "Securing Vault..." : "Secure Identity Parameters"}
             </button>
