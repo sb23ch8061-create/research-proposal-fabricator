@@ -12,6 +12,7 @@ export default function GeneratorWorkspace() {
   const [folders, setFolders] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
   const [activeEvidence, setActiveEvidence] = useState<any[]>([]);
+  const [researcherIdentity, setResearcherIdentity] = useState<any>(null);
   
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState("");
@@ -36,6 +37,10 @@ export default function GeneratorWorkspace() {
 
       const { data: folderData } = await supabase.from('research_folders').select('id, name').eq('user_id', user.id).is('parent_id', null);
       if (folderData) setFolders(folderData);
+
+      // Fetch User's Researcher Identity
+      const { data: identityData } = await supabase.from('researcher_identity').select('*').eq('user_id', user.id).single();
+      if (identityData) setResearcherIdentity(identityData);
 
       setIsLoading(false);
     };
@@ -77,6 +82,10 @@ export default function GeneratorWorkspace() {
       alert("Please select both a template and a professor.");
       return;
     }
+    if (!researcherIdentity) {
+      alert("Please complete your Researcher Identity Vault before generating a proposal.");
+      return;
+    }
 
     setIsGenerating(true);
     await loadEvidenceForValidation(selectedProfileId);
@@ -91,12 +100,15 @@ export default function GeneratorWorkspace() {
         contextPayload += `--- [${ev.field.toUpperCase()}] ---\n${ev.value}\n\n`;
       });
 
+      let researcherContext = `Name: ${researcherIdentity.full_name}\nTitle: ${researcherIdentity.current_title}\nFocus: ${researcherIdentity.research_focus}\nMethodologies: ${researcherIdentity.methodologies}\nBackground: ${researcherIdentity.academic_background}`;
+
       const response = await fetch("/api/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           templateContent: template.draft_content,
           professorContext: contextPayload,
+          researcherContext: researcherContext,
           professorName: profile.professor_name
         }),
       });
@@ -217,6 +229,13 @@ export default function GeneratorWorkspace() {
                 </select>
               </div>
             )}
+
+            <div className="mt-2 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+               <span className="text-xs font-extrabold text-blue-900 uppercase tracking-wider block mb-1">Identity Sync</span>
+               <span className="text-sm font-medium text-blue-800">
+                 {researcherIdentity ? `Linked: ${researcherIdentity.full_name}` : "Missing Identity"}
+               </span>
+            </div>
 
             <button 
               onClick={handleFabricate}
