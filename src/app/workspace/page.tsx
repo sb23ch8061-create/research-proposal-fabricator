@@ -16,13 +16,7 @@ export default function TargetWorkspace() {
   const [editingFolderId, setEditingFolderId] = useState("");
   const [editFolderName, setEditFolderName] = useState("");
   const [selectedFolderId, setSelectedFolderId] = useState("");
-  
-  const [newProfileName, setNewProfileName] = useState("");
-  const [newDepartment, setNewDepartment] = useState("");
   const [selectedProfileId, setSelectedProfileId] = useState("");
-
-  const [rawLiterature, setRawLiterature] = useState("");
-  const [isExtracting, setIsExtracting] = useState(false);
   const [savedEvidence, setSavedEvidence] = useState<any[]>([]);
 
   // Mechanism Control
@@ -88,30 +82,6 @@ export default function TargetWorkspace() {
     await supabase.from('research_folders').delete().eq('id', id);
     if (selectedFolderId === id) setSelectedFolderId("");
     fetchFolders();
-  };
-
-  const createProfile = async () => {
-    if (!newProfileName.trim() || !selectedFolderId) return;
-    const { data: { user } } = await supabase.auth.getUser();
-    await supabase.from('verified_profiles').insert({
-      user_id: user?.id, folder_id: selectedFolderId, professor_name: newProfileName, department_name: newDepartment || "Unknown"
-    });
-    setNewProfileName(""); setNewDepartment(""); fetchProfiles(selectedFolderId);
-  };
-
-  const handleExtraction = async () => {
-    if (!rawLiterature.trim() || !selectedProfileId) return;
-    setIsExtracting(true);
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      const response = await fetch("/api/extract", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ rawLiterature }) });
-      const result = await response.json();
-      const evidencePayload = result.evidence.map((ev: any) => ({ profile_id: selectedProfileId, user_id: user?.id, field_name: ev.field_name, field_value: ev.field_value, verification_status: 'UNVERIFIED' }));
-      await supabase.from('professor_evidence').delete().eq('profile_id', selectedProfileId);
-      await supabase.from('professor_evidence').insert(evidencePayload);
-      setRawLiterature(""); fetchEvidence(selectedProfileId);
-    } catch (err: any) {}
-    setIsExtracting(false);
   };
 
   // MECHANISM 1: LINK EXTRACTION
@@ -289,52 +259,55 @@ export default function TargetWorkspace() {
           </div>
         </div>
 
-        {/* COLUMN 2: THE 3 ACQUISITION MECHANISMS */}
+        {/* COLUMN 2: ACQUISITION MECHANISMS */}
         <div className="md:col-span-5 border rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm overflow-hidden">
-          <div className="flex border-b border-gray-300 bg-gray-200">
+          <div className="flex border-b border-gray-300 bg-gray-200 shrink-0">
             <button onClick={() => setActiveMechanism(1)} className={`flex-1 py-4 font-extrabold text-xs uppercase tracking-wider ${activeMechanism === 1 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>Link</button>
             <button onClick={() => setActiveMechanism(2)} className={`flex-1 py-4 font-extrabold text-xs uppercase tracking-wider ${activeMechanism === 2 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>File Import</button>
             <button onClick={() => setActiveMechanism(3)} className={`flex-1 py-4 font-extrabold text-xs uppercase tracking-wider ${activeMechanism === 3 ? 'bg-white border-t-4 border-gray-900' : 'text-gray-500'}`}>University</button>
           </div>
 
-          <div className="p-6 flex-1 flex flex-col">
-            {!selectedFolderId && <div className="bg-yellow-100 p-4 rounded-xl mb-4 font-bold text-sm text-yellow-800">Select a folder first to acquire targets.</div>}
+          <div className="p-6 flex-1 flex flex-col min-h-0">
+            {!selectedFolderId && <div className="bg-yellow-100 p-4 rounded-xl mb-4 font-bold text-sm text-yellow-800 shrink-0">Select a folder first to acquire targets.</div>}
 
-            {activeMechanism === 1 && (
-              <div className="space-y-4">
-                <h3 className="font-extrabold uppercase">Extract Target via Link</h3>
-                <p className="text-sm font-bold text-gray-600">Provide a URL. The system will identify the professor and independently enrich missing details.</p>
-                <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder="https://..." className="w-full border border-gray-400 p-3 rounded-xl font-bold" />
-                <button onClick={executeLinkExtraction} disabled={isExtractingLink || !selectedFolderId} className="w-full bg-gray-900 text-white px-4 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">
-                  {isExtractingLink ? "Discovering & Enriching..." : "Extract Target"}
-                </button>
-              </div>
-            )}
+            <div className="shrink-0">
+              {activeMechanism === 1 && (
+                <div className="space-y-4">
+                  <h3 className="font-extrabold uppercase">Extract Target via Link</h3>
+                  <p className="text-sm font-bold text-gray-600">Provide a URL. The system will identify the professor and independently enrich missing details.</p>
+                  <input value={targetUrl} onChange={e => setTargetUrl(e.target.value)} placeholder="https://..." className="w-full border border-gray-400 p-3 rounded-xl font-bold" />
+                  <button onClick={executeLinkExtraction} disabled={isExtractingLink || !selectedFolderId} className="w-full bg-gray-900 text-white px-4 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">
+                    {isExtractingLink ? "Discovering & Enriching..." : "Extract Target"}
+                  </button>
+                </div>
+              )}
 
-            {activeMechanism === 2 && (
-              <div className="space-y-4">
-                <h3 className="font-extrabold uppercase">Import Target Source</h3>
-                <p className="text-sm font-bold text-gray-600">Upload a CSV, Excel, or Image (Screenshot). The system will independently research and complete each record.</p>
-                <input type="file" accept=".csv,.xlsx,.jpg,.jpeg,.png" ref={fileInputRef} onChange={handleFileSelection} className="hidden" />
-                <button onClick={() => fileInputRef.current?.click()} disabled={!selectedFolderId} className="w-full bg-gray-900 text-white px-4 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 border border-gray-500">
-                  Upload CSV / Excel / Image
-                </button>
-              </div>
-            )}
+              {activeMechanism === 2 && (
+                <div className="space-y-4">
+                  <h3 className="font-extrabold uppercase">Import Target Source</h3>
+                  <p className="text-sm font-bold text-gray-600">Upload a CSV, Excel, or Image (Screenshot). The system will independently research and complete each record.</p>
+                  <input type="file" accept=".csv,.xlsx,.jpg,.jpeg,.png" ref={fileInputRef} onChange={handleFileSelection} className="hidden" />
+                  <button onClick={() => fileInputRef.current?.click()} disabled={!selectedFolderId} className="w-full bg-gray-900 text-white px-4 py-4 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50 border border-gray-500">
+                    Upload CSV / Excel / Image
+                  </button>
+                </div>
+              )}
 
-            {activeMechanism === 3 && (
-              <div className="space-y-4">
-                <h3 className="font-extrabold uppercase">Discover By University</h3>
-                <p className="text-sm font-bold text-gray-600">QS Database Integration & Department filtering will be established here in Phase 4.</p>
-                <button disabled className="w-full bg-gray-300 text-gray-500 px-4 py-4 rounded-xl font-bold uppercase tracking-wider opacity-50">
-                  Awaiting Phase 4 Activation
-                </button>
-              </div>
-            )}
+              {activeMechanism === 3 && (
+                <div className="space-y-4">
+                  <h3 className="font-extrabold uppercase">Discover By University</h3>
+                  <p className="text-sm font-bold text-gray-600">QS Database Integration & Department filtering will be established here in Phase 4.</p>
+                  <button disabled className="w-full bg-gray-300 text-gray-500 px-4 py-4 rounded-xl font-bold uppercase tracking-wider opacity-50">
+                    Awaiting Phase 4 Activation
+                  </button>
+                </div>
+              )}
+            </div>
 
-            <div className="mt-8 border-t border-gray-300 pt-6 flex-1 overflow-y-auto">
-              <h3 className="font-extrabold uppercase mb-4 text-gray-500 tracking-wider text-xs">Acquired Targets in Folder</h3>
-              <div className="space-y-2">
+            {/* SCROLLABLE TARGET LIST */}
+            <div className="mt-8 border-t border-gray-300 pt-6 flex-1 flex flex-col min-h-0">
+              <h3 className="font-extrabold uppercase mb-4 text-gray-500 tracking-wider text-xs shrink-0">Acquired Targets in Folder</h3>
+              <div className="space-y-2 overflow-y-auto flex-1 min-h-0 pr-2">
                 {profiles.map(p => (
                   <div key={p.id} onClick={() => setSelectedProfileId(p.id)} className={`p-4 border rounded-xl cursor-pointer transition-all ${selectedProfileId === p.id ? 'bg-gray-200 border-gray-600' : 'bg-white'}`}>
                     <div className="font-extrabold text-gray-900">{p.professor_name}</div>
@@ -346,33 +319,33 @@ export default function TargetWorkspace() {
           </div>
         </div>
 
-        {/* COLUMN 3: EVIDENCE VAULT */}
-        <div className="md:col-span-4 border p-6 rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm">
-          <h2 className="font-extrabold uppercase mb-4 tracking-wider">3. Verified Evidence</h2>
-          {selectedProfileId ? (
-            <div className="flex flex-col h-full">
-              <div className="flex flex-col gap-3 border-b border-gray-300 pb-6 mb-4">
-                <textarea value={rawLiterature} onChange={e => setRawLiterature(e.target.value)} placeholder="Paste URLs or text for deep extraction..." className="w-full h-24 border border-gray-400 p-3 rounded-xl resize-none font-bold" />
-                <button onClick={handleExtraction} disabled={isExtracting} className="bg-gray-900 text-white px-4 py-3 rounded-xl font-bold uppercase tracking-wider disabled:opacity-50">
-                  {isExtracting ? "Extracting..." : "Extract Data"}
-                </button>
-              </div>
-
-              <div className="overflow-y-auto flex-1 pr-2 space-y-3">
-                {savedEvidence.map(ev => (
-                  <div key={ev.id} className="bg-white p-4 border border-gray-300 rounded-xl">
-                    <div className="flex justify-between items-start mb-2">
-                      <span className="font-extrabold uppercase text-xs text-gray-500 tracking-wider">{ev.field_name.replace(/_/g, ' ')}</span>
-                      <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${ev.verification_status === 'VERIFIED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
-                        {ev.verification_status}
-                      </span>
+        {/* COLUMN 3: AUTOMATED EVIDENCE VAULT (Input Box Removed) */}
+        <div className="md:col-span-4 border p-6 rounded-xl bg-gray-50 flex flex-col h-[700px] shadow-sm overflow-hidden">
+          <h2 className="font-extrabold uppercase mb-4 tracking-wider shrink-0">3. Verified Evidence Vault</h2>
+          
+          <div className="flex-1 flex flex-col min-h-0">
+            {selectedProfileId ? (
+              <div className="overflow-y-auto flex-1 pr-2 space-y-3 min-h-0">
+                {savedEvidence.length === 0 ? (
+                  <p className="text-sm font-bold text-center mt-10 text-gray-500">Researching targets... Evidence will automatically appear here once extracted.</p>
+                ) : (
+                  savedEvidence.map(ev => (
+                    <div key={ev.id} className="bg-white p-4 border border-gray-300 rounded-xl shadow-sm">
+                      <div className="flex justify-between items-start mb-2">
+                        <span className="font-extrabold uppercase text-xs text-gray-500 tracking-wider">{ev.field_name.replace(/_/g, ' ')}</span>
+                        <span className={`text-[10px] px-2 py-1 rounded font-bold uppercase ${ev.verification_status === 'VERIFIED' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}`}>
+                          {ev.verification_status}
+                        </span>
+                      </div>
+                      <span className="text-gray-900 font-bold text-sm leading-relaxed">{ev.field_value}</span>
                     </div>
-                    <span className="text-gray-900 font-bold text-sm leading-relaxed">{ev.field_value}</span>
-                  </div>
-                ))}
+                  ))
+                )}
               </div>
-            </div>
-          ) : <p className="text-sm font-bold text-center mt-10">Select a target to view enriched evidence.</p>}
+            ) : (
+              <p className="text-sm font-bold text-center mt-10 text-gray-500">Select an acquired target to view their automatically enriched evidence.</p>
+            )}
+          </div>
         </div>
 
       </div>

@@ -6,27 +6,33 @@ export async function POST(request: Request) {
     const formData = await request.formData();
     const sparseData = formData.get('sparseData') as string | null;
     const targetUrl = formData.get('targetUrl') as string | null;
+    const file = formData.get('file') as File | null;
 
     const genAI = new GoogleGenerativeAI(process.env.GEMINI_API_KEY as string);
-    // Utilizing the exact model you specified as working
     const model = genAI.getGenerativeModel({ model: "gemini-3.5-flash" });
 
     let promptContext = "";
+    let inlineData: any = undefined;
+
     if (targetUrl) {
       promptContext = `Extract the academic professor/target from this specific URL: ${targetUrl}.`;
+    } else if (file) {
+       const buffer = Buffer.from(await file.arrayBuffer());
+       inlineData = { data: buffer.toString("base64"), mimeType: file.type || 'image/jpeg' };
+       promptContext = `Extract the academic target(s) from this provided screenshot or image document.`;
     } else if (sparseData) {
       promptContext = `Here is a partial academic record: ${sparseData}.`;
     }
 
     const prompt = `
-    You are an expert academic research engine. 
+    You are an autonomous academic research engine. 
     ${promptContext}
     
-    Your strict directive is to actively cross-check this information using your knowledge base. If the provided data is sparse (e.g., missing an email, department, research group, or current focus), you must identify the professor and deduce the missing details accurately. 
+    YOUR CORE OBJECTIVE: You must automatically act as a web-researcher. Do NOT just return the sparse data I gave you. You must actively deduce, cross-check, and fill in the missing details (like Email, Department, Official Profile URL, Research Group, and Research Focus) using your vast internal knowledge base of academic institutions.
     
-    If a detail absolutely cannot be verified, map its value as "NOT VERIFIED". Do not fabricate.
+    If a detail absolutely cannot be determined or cross-checked, map its value as "NOT VERIFIED". Do not fabricate.
 
-    Return ONLY a strict JSON array of objects representing the enriched profiles.
+    Return ONLY a strict JSON array of objects representing the fully enriched and cross-checked profiles.
     Format exactly like this:
     [
       {
@@ -43,7 +49,10 @@ export async function POST(request: Request) {
     ]
     `;
 
-    const result = await model.generateContent(prompt);
+    const payload: any[] = [prompt];
+    if (inlineData) payload.push({ inlineData });
+
+    const result = await model.generateContent(payload);
     let text = await result.response.text();
     text = text.replace(/```json/g, '').replace(/```/g, '').trim();
 
