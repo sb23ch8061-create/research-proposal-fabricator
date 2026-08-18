@@ -11,7 +11,10 @@ export default function TargetWorkspace() {
   const [isLoading, setIsLoading] = useState(true);
   const [folders, setFolders] = useState<any[]>([]);
   const [profiles, setProfiles] = useState<any[]>([]);
+  
+  // Permanent QS Universities pre-loaded state
   const [qsUniversities, setQsUniversities] = useState<any[]>([]);
+  const [filteredQsUniversities, setFilteredQsUniversities] = useState<any[]>([]);
   
   const [newFolderName, setNewFolderName] = useState("");
   const [editingFolderId, setEditingFolderId] = useState("");
@@ -21,7 +24,6 @@ export default function TargetWorkspace() {
   const [savedEvidence, setSavedEvidence] = useState<any[]>([]);
 
   const [activeMechanism, setActiveMechanism] = useState<1 | 2 | 3>(1);
-
   const [targetUrl, setTargetUrl] = useState("");
   const [isExtractingLink, setIsExtractingLink] = useState(false);
 
@@ -44,34 +46,29 @@ export default function TargetWorkspace() {
 
   useEffect(() => {
     fetchFolders();
+    fetchPermanentQsData();
   }, []);
 
   useEffect(() => {
-    if (selectedFolderId) {
-      fetchProfiles(selectedFolderId);
-    }
+    if (selectedFolderId) fetchProfiles(selectedFolderId);
   }, [selectedFolderId]);
 
   useEffect(() => {
     if (selectedProfileId) fetchEvidence(selectedProfileId);
   }, [selectedProfileId]);
 
+  // SAFE Instant local filtering that bypasses blank CSV rows
   useEffect(() => {
     if (!uniSearchQuery.trim()) {
-      setQsUniversities([]);
-      return;
+      setFilteredQsUniversities(qsUniversities);
+    } else {
+      const lowerQ = uniSearchQuery.toLowerCase();
+      setFilteredQsUniversities(qsUniversities.filter(u => {
+        if (!u || !u.university_name) return false;
+        return String(u.university_name).toLowerCase().includes(lowerQ);
+      }));
     }
-    const delayDebounceFn = setTimeout(async () => {
-      const { data } = await supabase
-        .from('qs_universities')
-        .select('*')
-        .ilike('university_name', `%${uniSearchQuery}%`)
-        .limit(50);
-      if (data) setQsUniversities(data);
-    }, 300);
-
-    return () => clearTimeout(delayDebounceFn);
-  }, [uniSearchQuery]);
+  }, [uniSearchQuery, qsUniversities]);
 
   const fetchFolders = async () => {
     setIsLoading(true);
@@ -81,6 +78,23 @@ export default function TargetWorkspace() {
     const { data } = await supabase.from('research_folders').select('*').eq('user_id', user.id).order('created_at', { ascending: false });
     if (data) setFolders(data);
     setIsLoading(false);
+  };
+
+  // SAFE Pre-load overriding the 1000 row default limit
+  const fetchPermanentQsData = async () => {
+    const { data, error } = await supabase
+      .from('qs_universities')
+      .select('*')
+      .limit(3000); 
+    
+    if (data) {
+      // Filter out the CSV header row if it accidentally imported, and any pure blank rows
+      const validData = data.filter(u => u.university_name && u.university_name !== 'Name');
+      setQsUniversities(validData);
+      setFilteredQsUniversities(validData);
+    } else if (error) {
+      console.error("Database Fetch Error:", error);
+    }
   };
 
   const fetchProfiles = async (folderId: string) => {
@@ -377,11 +391,11 @@ export default function TargetWorkspace() {
                       />
                       {showUniDropdown && (
                         <div className="absolute z-10 w-full mt-1 bg-white border border-gray-300 rounded-xl shadow-lg max-h-60 overflow-y-auto">
-                          {qsUniversities.map(u => (
+                          {filteredQsUniversities.slice(0, 50).map(u => (
                               <div
                                 key={u.id}
                                 className="p-3 hover:bg-gray-100 cursor-pointer text-sm border-b last:border-0 flex justify-between items-center"
-                                onClick={() => {
+                                onMouseDown={() => {
                                   setUniSearchQuery(u.university_name);
                                   setShowUniDropdown(false);
                                 }}
@@ -390,9 +404,9 @@ export default function TargetWorkspace() {
                                 <span className="text-gray-500 font-bold text-[10px] uppercase bg-gray-200 px-2 py-1 rounded">Rank: {u.ranking || 'N/A'}</span>
                               </div>
                             ))}
-                          {qsUniversities.length === 0 && uniSearchQuery.trim() !== "" && (
+                          {filteredQsUniversities.length === 0 && (
                             <div className="p-3 text-sm text-gray-500 font-bold">
-                              No matches found.
+                              {qsUniversities.length === 0 ? "Loading Database..." : "No matches found."}
                             </div>
                           )}
                         </div>

@@ -135,33 +135,11 @@ export default function DataGridSubpage() {
           <p className="font-bold text-gray-600 mt-1">Dynamically inject new columns and command the AI to research across entire folders.</p>
         </div>
         <div className="flex gap-4 items-center">
-          
-          {/* TEMPORARY QS SEEDER */}
-          <div className="bg-yellow-100 p-2 rounded-xl flex items-center gap-2 border border-yellow-300 shadow-sm">
-            <span className="text-xs font-bold text-yellow-800 uppercase tracking-wider">Seed QS Data:</span>
-            <input 
-              type="file" 
-              accept=".xlsx" 
-              onChange={async (e) => {
-                const file = e.target.files?.[0];
-                if (!file) return;
-                const fd = new FormData();
-                fd.append('qs_file', file);
-                alert("Seeding database... Please wait for confirmation.");
-                const res = await fetch('/api/seed-qs', { method: 'POST', body: fd });
-                const json = await res.json();
-                alert(json.success ? json.message : "Error: " + json.error);
-              }} 
-              className="text-xs font-bold max-w-[200px] text-gray-700" 
-            />
-          </div>
-
           <button onClick={() => router.push("/workspace")} className="px-6 py-2 bg-gray-900 text-white rounded-xl font-bold uppercase tracking-wider">Back to Workspace</button>
         </div>
       </div>
 
       <div className="flex gap-8 flex-1 min-h-0">
-        
         <div className="w-1/5 border p-6 rounded-xl bg-gray-50 flex flex-col shadow-sm min-h-0">
           <h2 className="font-extrabold uppercase mb-4 tracking-wider shrink-0">Select Folder</h2>
           <div className="space-y-3 overflow-y-auto flex-1 pr-2">
@@ -174,7 +152,6 @@ export default function DataGridSubpage() {
         </div>
 
         <div className="w-4/5 border rounded-xl bg-white flex flex-col shadow-sm overflow-hidden relative">
-          
           <div className="p-4 bg-gray-200 flex justify-between items-center shrink-0 border-b border-gray-300">
             <div className="flex items-center gap-4">
                <div className="flex items-center gap-2">
@@ -182,7 +159,6 @@ export default function DataGridSubpage() {
                  <input type="range" min="0.5" max="1.5" step="0.1" value={zoomLevel} onChange={e => setZoomLevel(parseFloat(e.target.value))} className="w-24" />
                </div>
             </div>
-            
             <div className="flex gap-4 items-center">
               <div className="flex gap-2">
                 <input value={newColumnName} onChange={e => setNewColumnName(e.target.value)} disabled={isEnrichingColumn || gridData.length === 0} placeholder="E.g., Post-Doc Openings" className="border border-gray-400 p-2 rounded text-sm font-bold" />
@@ -230,7 +206,6 @@ export default function DataGridSubpage() {
             )}
           </div>
         </div>
-
       </div>
     </div>
   );
