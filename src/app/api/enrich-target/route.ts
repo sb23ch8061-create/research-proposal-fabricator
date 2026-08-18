@@ -28,7 +28,7 @@ export async function POST(request: Request) {
     You are an autonomous academic research engine. 
     ${promptContext}
     
-    YOUR CORE OBJECTIVE: You must automatically act as a web-researcher. Do NOT just return the sparse data I gave you. You must actively deduce, cross-check, and fill in the missing details (like Email, Department, Official Profile URL, Research Group, and Research Focus) using your vast internal knowledge base of academic institutions.
+    YOUR CORE OBJECTIVE: You must automatically act as a web-researcher. Do NOT just return the sparse data I gave you. You must actively deduce, cross-check, and fill in exhaustive details using your vast internal knowledge base of academic institutions.
     
     If a detail absolutely cannot be determined or cross-checked, map its value as "NOT VERIFIED". Do not fabricate.
 
@@ -43,7 +43,11 @@ export async function POST(request: Request) {
           { "field_name": "Email", "field_value": "email@domain.edu or NOT VERIFIED" },
           { "field_name": "Official_Profile", "field_value": "URL or NOT VERIFIED" },
           { "field_name": "Research_Group", "field_value": "Group Name or NOT VERIFIED" },
-          { "field_name": "Research_Focus", "field_value": "Detailed focus areas..." }
+          { "field_name": "Research_Focus", "field_value": "Detailed focus areas..." },
+          { "field_name": "PhD_Openings", "field_value": "Information regarding PhD availability..." },
+          { "field_name": "Present_Work", "field_value": "Current ongoing projects..." },
+          { "field_name": "Key_Publications", "field_value": "List of major publications..." },
+          { "field_name": "Methodologies", "field_value": "Techniques and tools utilized..." }
         ]
       }
     ]
