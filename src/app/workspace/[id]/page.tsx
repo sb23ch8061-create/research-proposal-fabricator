@@ -223,7 +223,7 @@ export default function SpreadsheetWorkspace() {
 
     const csvContent = [
       headers.map(escapeCSV).join(","),
-      ...rows.map(r => r.map(escapeCSV).join(","))
+      ...rows.map((r: any[]) => r.map(escapeCSV).join(","))
     ].join("\n");
 
     const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
